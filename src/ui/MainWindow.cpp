@@ -155,7 +155,7 @@ MainWindow::MainWindow()
  * @brief Set up the main window UI, layouts, and connect signals.
  */
 void MainWindow::setupUi() {
-    setWindowTitle("Keenetic Manager");
+    setWindowTitle("KeenRouterManager");
 #ifdef Q_OS_MAC
     setUnifiedTitleAndToolBarOnMac(true);
 #endif
@@ -306,7 +306,7 @@ void MainWindow::syncSettingsPage() {
 void MainWindow::applyLanguage() {
     const auto &localizer = Localizer::instance();
 
-    setWindowTitle(localizer.text("main.window_title", "Keenetic Manager"));
+    setWindowTitle(localizer.text("main.window_title", "KeenRouterManager"));
     routerLabel_->setText(localizer.text("main.router", "Router:"));
     addButton_->setText(localizer.text("main.add", "Add"));
     refreshButton_->setText(localizer.text("main.refresh", "Refresh"));
@@ -717,13 +717,13 @@ void MainWindow::onAppSettingsChanged(const AppSettings &settings) {
  */
 void MainWindow::onShowAbout() {
     const auto &localizer = Localizer::instance();
-    const QString title = localizer.text("about.title", "About Keenetic Manager");
+    const QString title = localizer.text("about.title", "About KeenRouterManager");
     const QString version = QString::fromUtf8(KEENETIC_MANAGER_VERSION);
     const QString message = localizer.text("about.message",
-        QString("<h3>Keenetic Manager</h3>"
+        QString("<h3>KeenRouterManager</h3>"
                 "<p><b>Version:</b> %1</p>"
-                "<p><b>Developer:</b> toxblh</p>"
-                "<p><b>GitHub:</b> <a href='https://github.com/Toxblh/Keenetic-Manager'>https://github.com/Toxblh/Keenetic-Manager</a></p>")
+                "<p><b>Developer:</b> Tarisper</p>"
+                "<p><b>GitHub:</b> <a href='https://github.com/Tarisper/KeenRouterManager'>https://github.com/Tarisper/KeenRouterManager</a></p>")
             .arg(version)
     );
     QMessageBox::about(this, title, message);
