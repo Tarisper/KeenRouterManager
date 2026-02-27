@@ -1,0 +1,3 @@
+#pragma once
+
+#define KEENETIC_MANAGER_VERSION "@PROJECT_VERSION@"
