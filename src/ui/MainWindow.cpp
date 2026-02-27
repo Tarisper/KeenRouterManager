@@ -36,6 +36,12 @@ QString asUrl(QString value) {
     return value;
 }
 
+/**
+ * @brief Format a string representing uptime into a human-readable format
+ * @param value The string to format (either total seconds or DD:HH:MM:SS format)
+ * @param localizer The localizer instance for translation
+ * @return QString The formatted uptime string
+ */
 QString formatUptime(QString value, const Localizer &localizer) {
     value = value.trimmed();
     if (value.isEmpty()) {

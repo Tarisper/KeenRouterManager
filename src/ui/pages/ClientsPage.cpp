@@ -242,7 +242,10 @@ ConnectionDetails describeConnection(const OnlineClient &client) {
 }
 } // namespace
 
-// Делегат для отключения elide (подрезки) текста
+/**
+ * @brief Delegate to disable text elision (truncation)
+ * 
+ */
 class NoElideDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -405,7 +408,7 @@ void ClientsPage::render() {
         }
         table_->setItem(row, 6, new QTableWidgetItem(policy));
 
-        auto *button = new QPushButton("Wake", table_);
+        auto *button = new QPushButton(Localizer::instance().text("clients.wol.button", "Wake"), table_);
         const auto mac = client.mac;
         connect(button, &QPushButton::clicked, this, [this, mac]() {
             if (!client_) {
@@ -415,9 +418,13 @@ void ClientsPage::render() {
             QString message;
             const auto success = client_->wakeOnLan(mac, &message);
             if (success) {
-                QMessageBox::information(this, "Wake-on-LAN", message);
+                QMessageBox::information(this,
+                    Localizer::instance().text("clients.wol.title.success", "Wake-on-LAN"),
+                    message);
             } else {
-                QMessageBox::warning(this, "Wake-on-LAN", message);
+                QMessageBox::warning(this,
+                    Localizer::instance().text("clients.wol.title.error", "Wake-on-LAN"),
+                    message);
             }
         });
 

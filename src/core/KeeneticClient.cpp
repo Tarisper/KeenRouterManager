@@ -13,7 +13,15 @@
 #include <optional>
 
 namespace {
-// Trim and stabilize a router base URL so it always uses an explicit scheme and no trailing slash.
+/**
+ * @brief Normalize a router base URL to ensure consistent formatting.
+ * This function trims whitespace, removes trailing slashes, and ensures the URL
+ * starts with either "http://" or "https://" based on the preferHttps parameter.
+ * It also handles cases where the URL might have multiple leading slashes.
+ * @param value The input URL string to normalize
+ * @param preferHttps Whether to prefer HTTPS when normalizing the URL
+ * @return QString The normalized URL string
+ */
 QString normalizeUrl(QString value, bool preferHttps = false) {
     value = value.trimmed();
     while (value.endsWith('/')) {
@@ -27,6 +35,11 @@ QString normalizeUrl(QString value, bool preferHttps = false) {
     return value;
 }
 
+/**
+ * @brief Extract the most relevant link state, falling back to the MWS (mesh) status when needed.
+ * @param data JSON object with client data
+ * @return Link state string (e.g., "up")
+ */
 QString sanitizeAddress(QString value) {
     value = value.trimmed();
     while (value.endsWith('/')) {
@@ -35,6 +48,11 @@ QString sanitizeAddress(QString value) {
     return value;
 }
 
+/**
+ * @brief Extract the most relevant link state, falling back to the MWS (mesh) status when needed.
+ * @param data JSON object with client data
+ * @return Link state string (e.g., "up")
+ */
 QString stripScheme(QString value, QString &scheme) {
     scheme.clear();
     const auto lower = value.toLower();
@@ -51,7 +69,6 @@ QString stripScheme(QString value, QString &scheme) {
     return value;
 }
 
-// Extract the most relevant link state, falling back to the MWS (mesh) status when needed.
 /**
  * @brief Extract the most relevant link state, falling back to the MWS (mesh) status when needed.
  * @param data JSON object with client data
@@ -67,7 +84,6 @@ QString stateFromClientData(const QJsonObject &data) {
     return mwsLink;
 }
 
-// Build a list of router applications from a JSON array response.
 /**
  * @brief Build a list of router applications from a JSON array response.
  * @param array JSON array with application objects
@@ -107,7 +123,6 @@ QList<RouterApplication> parseApplicationsArray(const QJsonArray &array) {
     return result;
 }
 
-// Some router responses wrap application entries inside objects; this helper normalizes that.
 /**
  * @brief Some router responses wrap application entries inside objects; this helper normalizes that.
  * @param object JSON object possibly containing application arrays
@@ -153,7 +168,6 @@ QList<RouterApplication> parseApplicationsObject(const QJsonObject &object) {
     return result;
 }
 
-// Identify built-in services that do not represent user-installed apps.
 /**
  * @brief Identify built-in services that do not represent user-installed apps.
  * @param name Application name
@@ -174,7 +188,6 @@ bool isSystemApplicationName(const QString &name) {
     return value.startsWith("lang-") || value.startsWith("nathelper-") || value.startsWith("opkg-");
 }
 
-// Turn a simple key/bool JSON object into a map of service flags.
 /**
  * @brief Turn a simple key/bool JSON object into a map of service flags.
  * @param json JSON document with service flags
@@ -195,7 +208,6 @@ QMap<QString, bool> parseServiceMap(const QJsonDocument &json) {
     return services;
 }
 
-// Split the raw version components string into an ordered list for display.
 /**
  * @brief Split the raw version components string into an ordered list for display.
  * @param json JSON document with version components
@@ -220,7 +232,6 @@ QStringList parseVersionComponents(const QJsonDocument &json) {
 }
 } // namespace
 
-// Store the connection configuration and ensure the network manager can persist cookies.
 /**
  * @brief Store the connection configuration and ensure the network manager can persist cookies.
  * @param baseUrl Router base URL
@@ -232,24 +243,24 @@ QStringList parseVersionComponents(const QJsonDocument &json) {
  * @param preferHttps Prefer HTTPS scheme
  */
 KeeneticClient::KeeneticClient(QString baseUrl,
-                                                                                                                         QString username,
-                                                                                                                         QString password,
-                                                                                                                         QString name,
-                                                                                                                         int requestTimeoutSec,
-                                                                                                                         int requestRetries,
-                                                                                                                         bool preferHttps)
-                : baseUrl_(),
-            username_(std::move(username)),
-            password_(std::move(password)),
-                        name_(std::move(name)),
-                        requestTimeoutSec_(qMax(1, requestTimeoutSec)),
-                        requestRetries_(qMax(1, requestRetries)),
-                        preferHttps_(preferHttps) {
-        const auto sanitized = sanitizeAddress(std::move(baseUrl));
-        baseWithoutScheme_ = stripScheme(sanitized, explicitScheme_);
-        hasExplicitScheme_ = !explicitScheme_.isEmpty();
-        const QString defaultScheme = hasExplicitScheme_ ? explicitScheme_ : (preferHttps_ ? QStringLiteral("https") : QStringLiteral("http"));
-        baseUrl_ = buildBaseForScheme(defaultScheme);
+                               QString username,
+                               QString password,
+                               QString name,
+                               int requestTimeoutSec,
+                               int requestRetries,
+                               bool preferHttps)
+    : baseUrl_(),
+      username_(std::move(username)),
+      password_(std::move(password)),
+      name_(std::move(name)),
+      requestTimeoutSec_(qMax(1, requestTimeoutSec)),
+      requestRetries_(qMax(1, requestRetries)),
+      preferHttps_(preferHttps) {
+    const auto sanitized = sanitizeAddress(std::move(baseUrl));
+    baseWithoutScheme_ = stripScheme(sanitized, explicitScheme_);
+    hasExplicitScheme_ = !explicitScheme_.isEmpty();
+    const QString defaultScheme = hasExplicitScheme_ ? explicitScheme_ : (preferHttps_ ? QStringLiteral("https") : QStringLiteral("http"));
+    baseUrl_ = buildBaseForScheme(defaultScheme);
     manager_.setCookieJar(new QNetworkCookieJar(&manager_));
 }
 
