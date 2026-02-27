@@ -1,6 +1,6 @@
 {
   "en": {
-    "main.window_title": "Keenetic Manager",
+    "main.window_title": "KeenRouterManager",
     "main.router": "Router:",
     "main.add": "Add",
     "main.refresh": "Refresh",
@@ -88,11 +88,11 @@
     "clients.frequency.unit": "MHz",
     "settings.seconds_suffix": " s",
     "common.files.json": "JSON files (*.json);;All files (*.*)",
-    "about.title": "About Keenetic Manager",
-    "about.message": "<h3>Keenetic Manager</h3><p><b>Version:</b> 0.1.0</p><p><b>Developer:</b> toxblh</p><p><b>GitHub:</b> <a href='https://github.com/Toxblh/Keenetic-Manager'>https://github.com/Toxblh/Keenetic-Manager</a></p>"
+    "about.title": "About KeenRouterManager",
+    "about.message": "<h3>KeenRouterManager</h3><p><b>Version:</b> 0.1.0</p><p><b>Developer:</b> Tarisper</p><p><b>GitHub:</b> <a href='https://github.com/Tarisper/KeenRouterManager'>https://github.com/Tarisper/KeenRouterManager</a></p>"
   },
   "ru": {
-    "main.window_title": "Keenetic Manager",
+    "main.window_title": "KeenRouterManager",
     "main.router": "Роутер:",
     "main.add": "Добавить",
     "main.refresh": "Обновить",
@@ -180,7 +180,7 @@
     "clients.frequency.unit": "МГц",
     "settings.seconds_suffix": " с",
     "common.files.json": "JSON файлы (*.json);;Все файлы (*.*)",
-    "about.title": "О программе Keenetic Manager",
-    "about.message": "<h3>Keenetic Manager</h3><p><b>Версия:</b> 0.1.0</p><p><b>Разработчик:</b> toxblh</p><p><b>GitHub:</b> <a href='https://github.com/Toxblh/Keenetic-Manager'>https://github.com/Toxblh/Keenetic-Manager</a></p>"
+    "about.title": "О программе KeenRouterManager",
+    "about.message": "<h3>KeenRouterManager</h3><p><b>Версия:</b> 0.1.0</p><p><b>Разработчик:</b> Tarisper</p><p><b>GitHub:</b> <a href='https://github.com/Tarisper/KeenRouterManager'>https://github.com/Tarisper/KeenRouterManager</a></p>"
   }
 }

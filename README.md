@@ -1,12 +1,12 @@
 <img src="data/icons/hicolor/scalable/apps/KeenRouterManagerIcon.png" align="right" width="64" height="64">
 
-# Keenetic Manager (Qt/C++)
+# KeenRouterManager (Qt/C++)
 
 <em>Modern Qt6 client for Keenetic routers, rewritten in C++ to stay fast and responsive across platforms.</em>
 
 ## Overview
 
-**Keenetic Manager (Qt/C++)** is the native evolution of the original Python/GTK tool [Keenetic-Manager](https://github.com/Toxblh/Keenetic-Manager): it keeps the same router policy workflow but relies on Qt Widgets, CMake, and the Qt Network stack for a snappier UI and better deployability on macOS, Linux, and Windows. The app stores router profiles as JSON configs, speaks to the existing `rci` endpoints, and exposes automation helpers such as Wake-on-LAN. The icon above is exported from `resources/app.icns` so the documentation matches the shipped bundle.
+**KeenRouterManager (Qt/C++)** is the native evolution of the original Python/GTK tool [Keenetic-Manager](https://github.com/Toxblh/Keenetic-Manager): it keeps the same router policy workflow but relies on Qt Widgets, CMake, and the Qt Network stack for a snappier UI and better deployability on macOS, Linux, and Windows. The app stores router profiles as JSON configs, speaks to the existing `rci` endpoints, and exposes automation helpers such as Wake-on-LAN. The icon above is exported from `resources/app.icns` so the documentation matches the shipped bundle.
 
 ## Highlights
 
