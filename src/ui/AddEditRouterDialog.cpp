@@ -12,6 +12,12 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+/**
+ * @brief Construct a new Add Edit Router Dialog:: Add Edit Router Dialog object
+ * 
+ * @param parent The parent widget
+ * @param initial The initial router information, if any
+ */
 AddEditRouterDialog::AddEditRouterDialog(QWidget *parent, const std::optional<RouterInfo> &initial)
     : QDialog(parent),
       nameEdit_(new QLineEdit(this)),
@@ -78,6 +84,13 @@ AddEditRouterDialog::AddEditRouterDialog(QWidget *parent, const std::optional<Ro
     setLayout(root);
 }
 
+/**
+ * @brief Show the add/edit router dialog
+ * 
+ * @param parent The parent widget
+ * @param initial The initial router information, if any
+ * @return std::optional<RouterInfo> The router information if the dialog was accepted, std::nullopt otherwise
+ */
 std::optional<RouterInfo> AddEditRouterDialog::showDialog(QWidget *parent, const std::optional<RouterInfo> &initial) {
     AddEditRouterDialog dialog(parent, initial);
     if (dialog.exec() != QDialog::Accepted) {
@@ -87,6 +100,10 @@ std::optional<RouterInfo> AddEditRouterDialog::showDialog(QWidget *parent, const
     return dialog.toRouter();
 }
 
+/**
+ * @brief Get the router information from the dialog
+ * @return RouterInfo The router information
+ */
 RouterInfo AddEditRouterDialog::toRouter() const {
     RouterInfo router;
     router.name = nameEdit_->text().trimmed();
@@ -96,6 +113,10 @@ RouterInfo AddEditRouterDialog::toRouter() const {
     return router;
 }
 
+/**
+ * @brief Validate the dialog fields
+ * @return true if the fields are valid, false otherwise
+ */
 bool AddEditRouterDialog::validate() {
     if (nameEdit_->text().trimmed().isEmpty() ||
         addressEdit_->text().trimmed().isEmpty() ||

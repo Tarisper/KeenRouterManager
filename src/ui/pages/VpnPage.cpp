@@ -15,6 +15,12 @@
 #include <QVBoxLayout>
 
 namespace {
+/**
+ * @brief Check if the client matches the filter string (name, IP, or MAC).
+ * @param client OnlineClient to check
+ * @param filter Filter string
+ * @return true if matches, false otherwise
+ */
 bool containsFilter(const OnlineClient &client, const QString &filter) {
     if (filter.isEmpty()) {
         return true;
@@ -26,6 +32,12 @@ bool containsFilter(const OnlineClient &client, const QString &filter) {
            client.mac.toLower().contains(text);
 }
 
+/**
+ * @brief Create a table item with online/offline status icon and text.
+ * @param owner Owner widget
+ * @param online True if client is online
+ * @return QTableWidgetItem with status
+ */
 QTableWidgetItem *makeStateItem(QWidget *owner, bool online) {
     const auto &localizer = Localizer::instance();
     auto *item = new QTableWidgetItem(localizer.text(online ? "status.online" : "status.offline",
@@ -35,13 +47,6 @@ QTableWidgetItem *makeStateItem(QWidget *owner, bool online) {
     return item;
 }
 } // namespace
-
-/**
- * @brief Check if the client matches the filter string (name, IP, or MAC).
- * @param client OnlineClient to check
- * @param filter Filter string
- * @return true if matches, false otherwise
- */
 
 VpnPage::VpnPage(QWidget *parent)
     : QWidget(parent),
@@ -99,7 +104,6 @@ VpnPage::VpnPage(QWidget *parent)
  * @param router RouterInfo
  * @param client KeeneticClient shared pointer
  */
-
 void VpnPage::setContext(const RouterInfo &router, const std::shared_ptr<KeeneticClient> &client) {
     router_ = router;
     client_ = client;
@@ -108,7 +112,6 @@ void VpnPage::setContext(const RouterInfo &router, const std::shared_ptr<Keeneti
 /**
  * @brief Refresh the VPN clients and policies from the router.
  */
-
 void VpnPage::refresh() {
     if (!client_) {
         clients_.clear();
@@ -125,7 +128,6 @@ void VpnPage::refresh() {
 /**
  * @brief Render the VPN clients table with current data and filter.
  */
-
 void VpnPage::render() {
     table_->setSortingEnabled(false);
     refreshButton_->setText(Localizer::instance().text("main.refresh", "Refresh"));
@@ -185,7 +187,9 @@ void VpnPage::render() {
             }
 
             if (!ok) {
-                QMessageBox::warning(this, "Policy", "Failed to update client policy.");
+                QMessageBox::warning(this,
+                    Localizer::instance().text("vpn.policy.title", "Policy"),
+                    Localizer::instance().text("vpn.policy.update_failed", "Failed to update client policy."));
             }
         });
 
@@ -217,7 +221,6 @@ void VpnPage::render() {
  * @param column Column index
  * @param order Sort order
  */
-
 void VpnPage::setSortState(int column, Qt::SortOrder order) {
     if (column < 0 || column >= table_->columnCount()) {
         return;

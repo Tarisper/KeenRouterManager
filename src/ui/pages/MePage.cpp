@@ -16,6 +16,11 @@
 #include <QThread>
 
 namespace {
+/**
+ * @brief Normalize MAC address to lowercase without separators.
+ * @param mac MAC address string
+ * @return Normalized MAC address
+ */
 QString normalizeMac(QString mac) {
     mac = mac.toLower();
     QString normalized;
@@ -30,6 +35,12 @@ QString normalizeMac(QString mac) {
     return normalized;
 }
 
+/**
+ * @brief Create a table item with online/offline status icon and text.
+ * @param owner Owner widget
+ * @param online True if client is online
+ * @return QTableWidgetItem with status
+ */
 QTableWidgetItem *makeStateItem(QWidget *owner, bool online) {
     const auto &localizer = Localizer::instance();
     auto *item = new QTableWidgetItem(localizer.text(online ? "status.online" : "status.offline",
@@ -85,7 +96,6 @@ MePage::MePage(QWidget *parent)
  * @param router RouterInfo
  * @param client KeeneticClient shared pointer
  */
-
 void MePage::setContext(const RouterInfo &router, const std::shared_ptr<KeeneticClient> &client) {
     router_ = router;
     client_ = client;
@@ -94,7 +104,6 @@ void MePage::setContext(const RouterInfo &router, const std::shared_ptr<Keenetic
 /**
  * @brief Refresh the local interfaces and router clients, update the table.
  */
-
 void MePage::refresh() {
     table_->setSortingEnabled(false);
     table_->setHorizontalHeaderLabels({
@@ -193,55 +202,62 @@ void MePage::refresh() {
                 return;
             }
 
-            if (targetMac.isEmpty()) {
-                QMessageBox::warning(this, "Policy", "Device MAC is unknown for router API.");
-                refresh();
-                return;
-            }
+        if (targetMac.isEmpty()) {
+            QMessageBox::warning(this,
+                Localizer::instance().text("me.policy.title", "Policy"),
+                Localizer::instance().text("me.policy.mac_unknown", "Device MAC is unknown for router API."));
+            refresh();
+            return;
+        }
 
-            const auto value = policyCombo->currentData().toString();
-            bool ok = false;
-            if (value == "__blocked__") {
-                ok = client_->setClientBlock(targetMac);
-            } else {
-                ok = client_->applyPolicyToClient(targetMac, value);
-            }
+        const auto value = policyCombo->currentData().toString();
+        bool ok = false;
+        if (value == "__blocked__") {
+            ok = client_->setClientBlock(targetMac);
+        } else {
+            ok = client_->applyPolicyToClient(targetMac, value);
+        }
 
-            if (!ok) {
-                QMessageBox::warning(this, "Policy", "Failed to update client policy.");
-                refresh();
-                return;
-            }
+        if (!ok) {
+            QMessageBox::warning(this,
+                Localizer::instance().text("me.policy.title", "Policy"),
+                Localizer::instance().text("me.policy.update_failed", "Failed to update client policy."));
+            refresh();
+            return;
+        }
 
-            const auto latestClients = client_->getOnlineClients();
-            const auto targetNormalized = normalizeMac(targetMac);
-            bool confirmed = false;
+        const auto latestClients = client_->getOnlineClients();
+        const auto targetNormalized = normalizeMac(targetMac);
+        bool confirmed = false;
 
-            for (int attempt = 0; attempt < 18 && !confirmed; ++attempt) {
-                const auto polledClients = (attempt == 0) ? latestClients : client_->getOnlineClients();
-                const auto it = std::find_if(polledClients.cbegin(), polledClients.cend(),
-                                             [&targetNormalized](const OnlineClient &item) {
-                                                 return normalizeMac(item.mac) == targetNormalized;
-                                             });
+        // Wait up to 3.6 seconds (18 attempts * 200ms) for policy confirmation
+        for (int attempt = 0; attempt < 18 && !confirmed; ++attempt) {
+            const auto polledClients = (attempt == 0) ? latestClients : client_->getOnlineClients();
+            const auto it = std::find_if(polledClients.cbegin(), polledClients.cend(),
+                                         [&targetNormalized](const OnlineClient &item) {
+                                             return normalizeMac(item.mac) == targetNormalized;
+                                         });
 
-                if (it != polledClients.cend()) {
-                    if (value == "__blocked__") {
-                        confirmed = it->deny;
-                    } else if (value.isEmpty()) {
-                        confirmed = !it->deny && it->policy.isEmpty();
-                    } else {
-                        confirmed = !it->deny && it->policy == value;
-                    }
-                }
-
-                if (!confirmed) {
-                    QThread::msleep(200);
+            if (it != polledClients.cend()) {
+                if (value == "__blocked__") {
+                    confirmed = it->deny;
+                } else if (value.isEmpty()) {
+                    confirmed = !it->deny && it->policy.isEmpty();
+                } else {
+                    confirmed = !it->deny && it->policy == value;
                 }
             }
 
             if (!confirmed) {
-                QMessageBox::warning(this, "Policy", "Router has not confirmed the new policy yet. Try Refresh after a short delay.");
+                QThread::msleep(200);
             }
+        }
+
+        if (!confirmed) {
+            QMessageBox::warning(this,
+                Localizer::instance().text("me.policy.title", "Policy"),
+                Localizer::instance().text("me.policy.not_confirmed", "Router has not confirmed the new policy yet. Try Refresh after a short delay."));
+        }
 
             refresh();
         });
