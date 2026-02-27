@@ -1,0 +1,45 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#dbe4ee"/>
+    </linearGradient>
+    <linearGradient id="routerBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3f4a56"/>
+      <stop offset="100%" stop-color="#1f252d"/>
+    </linearGradient>
+    <linearGradient id="routerTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5b6775"/>
+      <stop offset="100%" stop-color="#2e3641"/>
+    </linearGradient>
+    <linearGradient id="mFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#d9e1ea"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#0e1217" flood-opacity="0.35"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0e1217" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+
+  <rect x="36" y="36" width="952" height="952" rx="216" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <path d="M248 360l-44-162" stroke="#2e3641" stroke-width="36" stroke-linecap="round"/>
+    <path d="M776 360l44-162" stroke="#2e3641" stroke-width="36" stroke-linecap="round"/>
+
+    <rect x="148" y="360" width="728" height="356" rx="92" fill="url(#routerBody)"/>
+    <rect x="176" y="390" width="672" height="112" rx="56" fill="url(#routerTop)"/>
+
+    <circle cx="286" cy="620" r="18" fill="#9fd9b2"/>
+    <circle cx="344" cy="620" r="18" fill="#9fd9b2"/>
+    <circle cx="402" cy="620" r="18" fill="#9fd9b2"/>
+
+    <text x="556" y="645" text-anchor="middle" font-family="SF Pro Display, Inter, Helvetica, Arial, sans-serif" font-size="238" font-weight="800" fill="url(#mFill)">M</text>
+  </g>
+
+  <rect x="148" y="360" width="728" height="356" rx="92" fill="none" stroke="#12171d" stroke-opacity="0.28" stroke-width="6"/>
+  <ellipse cx="512" cy="792" rx="248" ry="38" fill="#1a2028" opacity="0.18" filter="url(#softShadow)"/>
+</svg>
