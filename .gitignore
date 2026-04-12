@@ -1,0 +1,17 @@
+# Xcode build artifacts
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+xcuserdata/
+.swiftpm/
+
+# Swift Package Manager
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+Package.resolved
+
+# macOS
+.DS_Store
