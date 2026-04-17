@@ -1,22 +1,31 @@
-//
-//  ContentView.swift
-//  KeenRouterManager
-//
-//  Created by Daniyar Hayitov on 10.04.2026.
-//
-
 import SwiftUI
+import UniformTypeIdentifiers
 
-/**
- * Layout constants for the main screen.
- */
 private enum LayoutMetrics {
-    static let sidebarWidth: CGFloat = 300
-    static let statusWidth: CGFloat = 24
-    static let nameWidth: CGFloat = 222
-    static let ipWidth: CGFloat = 90
-    static let detailsWidth: CGFloat = 200
-    static let policyWidth: CGFloat = 153
+    static let sidebarWidth: CGFloat = 280
+    static let inspectorWidth: CGFloat = 320
+    static let splitViewChromeAllowance: CGFloat = 48
+    static let statusColumnWidth: CGFloat = 60
+    static let statusIndicatorSize: CGFloat = 8
+    static let clientColumnIdealWidth: CGFloat = 180
+    static let clientColumnMinimumWidth: CGFloat = 180
+    static let ipColumnWidth: CGFloat = 100
+    static let segmentColumnIdealWidth: CGFloat = 130
+    static let segmentColumnMinimumWidth: CGFloat = 130
+    static let connectionColumnWidth: CGFloat = 150
+    static let policyColumnWidth: CGFloat = 150
+    static let minimumWindowWidthWithoutInspector: CGFloat =
+          1240
+//        sidebarWidth +
+//        statusColumnWidth +
+//        clientColumnMinimumWidth +
+//        ipColumnWidth +
+//        segmentColumnMinimumWidth +
+//        connectionColumnWidth +
+//        policyColumnWidth +
+//        splitViewChromeAllowance + 100
+    static let minimumWindowWidthWithInspector: CGFloat = 1240
+    static let minimumWindowHeight: CGFloat = 760
 }
 
 /**
@@ -32,15 +41,49 @@ private extension NavigationSplitViewVisibility {
     }
 }
 
+private enum ClientStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case online
+    case offline
+    case blocked
+
+    var id: String { rawValue }
+}
+
+private enum ClientSortMode: String, CaseIterable, Identifiable {
+    case smart
+    case name
+    case ip
+    case segment
+    case policy
+
+    var id: String { rawValue }
+}
+
+private enum ClientPolicyFilter: Equatable {
+    case all
+    case defaultPolicy
+    case blocked
+    case policy(String)
+}
+
 /**
- * Main application screen.
+ * Main application window with router sidebar, searchable client table, and inspector.
  */
 struct ContentView: View {
     @EnvironmentObject private var localization: LocalizationManager
-    @StateObject private var viewModel = MainViewModel()
+    @EnvironmentObject private var viewModel: MainViewModel
+    @EnvironmentObject private var appUI: AppUIState
+
     @State private var editorPayload: RouterEditorPayload?
     @State private var isDeleteConfirmationShown = false
     @State private var columnVisibility: NavigationSplitViewVisibility
+    @State private var searchText = ""
+    @State private var statusFilter: ClientStatusFilter = .all
+    @State private var sortMode: ClientSortMode = .smart
+    @State private var policyFilter: ClientPolicyFilter = .all
+    @State private var segmentFilter: String?
+    @SceneStorage("mainWindow.isInspectorPresented") private var isInspectorPresented = true
 
     /**
      * Creates the main screen with the last saved sidebar visibility.
@@ -50,267 +93,249 @@ struct ContentView: View {
         _columnVisibility = State(initialValue: NavigationSplitViewVisibility(isRouterListVisible: isRouterListVisible))
     }
 
-    /**
-     * Safe selection binding for the router list.
-     *
-     * Ignores `nil` so clicking an empty list area does not clear selection.
-     */
-    private var profileSelectionBinding: Binding<UUID?> {
-        Binding(
-            get: { viewModel.selectedProfileID },
-            set: { newValue in
-                // Ignore "click on empty space" deselection to keep current router context.
-                guard let newValue else { return }
-                guard newValue != viewModel.selectedProfileID else { return }
-                DispatchQueue.main.async {
-                    viewModel.selectedProfileID = newValue
-                }
+    private var visibleClients: [RouterClient] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return viewModel.filteredClients
+            .filter { client in
+                matchesSearch(client, query: query) &&
+                    matchesStatusFilter(client) &&
+                    matchesPolicyFilter(client) &&
+                    matchesSegmentFilter(client)
             }
-        )
+            .sorted(by: clientComparator)
     }
 
-    /**
-     * Applies the fixed window layout for the current sidebar state.
-     * - Parameter isRouterListVisible: Optional explicit sidebar visibility.
-     */
-    private func applyWindowLayout(isRouterListVisible: Bool? = nil) {
-        let sidebarVisible = isRouterListVisible ?? columnVisibility.isRouterListVisible
-        DispatchQueue.main.async {
-            WindowLayout.apply(sidebarVisible: sidebarVisible)
+    private var availableSegments: [String] {
+        viewModel.filteredClients
+            .map { viewModel.displaySegmentSummary(for: $0) }
+            .filter { $0 != localization.text("common.notAvailable") }
+            .uniqued()
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var activeFilterCount: Int {
+        var count = 0
+        if viewModel.showOnlyMyDevices { count += 1 }
+        if statusFilter != .all { count += 1 }
+        if policyFilter != .all { count += 1 }
+        if segmentFilter != nil { count += 1 }
+        return count
+    }
+
+    private var searchSuggestions: [String] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return [] }
+
+        let pool = viewModel.filteredClients.flatMap { client in
+            [
+                client.name,
+                client.ip,
+                client.mac,
+                viewModel.displayPolicyName(for: client),
+                viewModel.displaySegmentSummary(for: client)
+            ]
         }
-    }
 
-    /**
-     * Persists and applies window changes when the split view visibility changes.
-     * - Parameter newValue: Updated split view visibility.
-     */
-    private func handleColumnVisibilityChange(_ newValue: NavigationSplitViewVisibility) {
-        let isRouterListVisible = newValue.isRouterListVisible
-        if viewModel.isRouterListVisible != isRouterListVisible {
-            viewModel.isRouterListVisible = isRouterListVisible
-        }
-        applyWindowLayout(isRouterListVisible: isRouterListVisible)
-    }
-
-    /**
-     * Restores split view visibility from the persisted view model state.
-     * - Parameter isRouterListVisible: Desired sidebar visibility.
-     */
-    private func restoreColumnVisibility(isRouterListVisible: Bool) {
-        let targetVisibility = NavigationSplitViewVisibility(isRouterListVisible: isRouterListVisible)
-        guard columnVisibility != targetVisibility else { return }
-        columnVisibility = targetVisibility
+        return pool
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.localizedCaseInsensitiveContains(query) }
+            .uniqued()
+            .prefix(6)
+            .map { $0 }
     }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            VStack(spacing: 10) {
-                List(selection: profileSelectionBinding) {
-                    ForEach(viewModel.profiles) { profile in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.name)
-                                .font(.body)
-                            Text(profile.address)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .tag(profile.id)
-                    }
-                }
-                .listStyle(.inset(alternatesRowBackgrounds: true))
-                .frame(maxHeight: .infinity)
-
-                HStack {
-                    Button {
-                        editorPayload = viewModel.makeNewEditorPayload()
-                    } label: {
-                        Label(localization.text("action.add"), systemImage: "plus")
-                    }
-
-                    Button {
-                        editorPayload = viewModel.makeEditorPayloadForSelected()
-                    } label: {
-                        Label(localization.text("action.edit"), systemImage: "pencil")
-                    }
-                    .disabled(viewModel.selectedProfile == nil)
-
-                    Spacer()
-
-                    Button(role: .destructive) {
-                        isDeleteConfirmationShown = true
-                    } label: {
-                        Label(localization.text("action.delete"), systemImage: "trash")
-                    }
-                    .disabled(viewModel.selectedProfile == nil)
-                }
-            }
-            .padding(12)
-            .navigationSplitViewColumnWidth(
-                min: LayoutMetrics.sidebarWidth,
-                ideal: LayoutMetrics.sidebarWidth,
-                max: LayoutMetrics.sidebarWidth
-            )
+            sidebar
         } detail: {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(viewModel.selectedProfile?.name ?? localization.text("router.fallbackName"))
-                                .font(.title3)
-                        }
-
-                        Spacer()
-
-                        Toggle(localization.text("toggle.my"), isOn: $viewModel.showOnlyMyDevices)
-                            .toggleStyle(.checkbox)
-                            .font(.callout)
-                            .help(localization.text("toggle.my.help"))
-
-                        Button(localization.text("action.connect")) {
-                            Task {
-                                await viewModel.connectSelectedProfile()
-                            }
-                        }
-                        .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
-
-                        Button(localization.text("action.refresh")) {
-                            Task {
-                                await viewModel.refreshClients()
-                            }
-                        }
-                        .disabled(!viewModel.isConnected || viewModel.isBusy)
-                    }
-
-                    if let connectedAddress = viewModel.connectedAddress {
-                        Text(localization.text("router.connectedVia", args: [connectedAddress]))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text(viewModel.statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            detail
+        }
+        .searchable(
+            text: $searchText,
+            placement: .toolbar,
+            prompt: Text(localization.text("search.clients.prompt"))
+        )
+        .frame(
+            minWidth: isInspectorPresented
+                ? LayoutMetrics.minimumWindowWidthWithInspector
+                : LayoutMetrics.minimumWindowWidthWithoutInspector,
+            minHeight: LayoutMetrics.minimumWindowHeight
+        )
+        .searchSuggestions {
+            ForEach(searchSuggestions, id: \.self) { suggestion in
+                Text(suggestion)
+                    .searchCompletion(suggestion)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
-
-                Divider()
-
-                Group {
-                    if viewModel.filteredClients.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "desktopcomputer")
-                                .font(.system(size: 42, weight: .regular))
-                                .foregroundStyle(.secondary)
-
-                            Text(
-                                viewModel.isMineFilterActiveWithoutMatches
-                                    ? localization.text("empty.noMineClients.title")
-                                    : localization.text("empty.noClients.title")
-                            )
-                                .font(.system(size: 48, weight: .bold))
-
-                            Text(
-                                viewModel.isMineFilterActiveWithoutMatches
-                                    ? localization.text("empty.noMineClients.subtitle")
-                                    : localization.text("empty.noClients.subtitle")
-                            )
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    } else {
-                        List(viewModel.filteredClients) { client in
-                            HStack(spacing: 12) {
-                                Circle()
-                                    .fill(client.isOnline ? Color.green : Color.red)
-                                    .frame(width: 10, height: 10)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
-                                    )
-                                    .frame(width: LayoutMetrics.statusWidth, alignment: .center)
-                                    .help(client.isOnline ? localization.text("client.online") : localization.text("client.offline"))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(client.name)
-                                        .font(.body)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    Text(client.mac)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                                .frame(width: LayoutMetrics.nameWidth, alignment: .leading)
-
-                                Text(client.ip)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .frame(width: LayoutMetrics.ipWidth, alignment: .leading)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(localization.text("client.segment", args: [viewModel.displaySegmentSummary(for: client)]))
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    Text(localization.text("client.connection", args: [viewModel.displayConnectionSummary(for: client)]))
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                }
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .frame(width: LayoutMetrics.detailsWidth, alignment: .leading)
-
-                                Menu {
-                                    Button(localization.text("policy.default")) {
-                                        Task {
-                                            await viewModel.applyPolicy(nil, to: client)
-                                        }
-                                    }
-
-                                    Button(localization.text("policy.blocked")) {
-                                        Task {
-                                            await viewModel.setClientBlocked(client)
-                                        }
-                                    }
-
-                                    if !viewModel.policies.isEmpty {
-                                        Divider()
-                                    }
-
-                                    ForEach(viewModel.policies) { policy in
-                                        Button(policy.displayName) {
-                                            Task {
-                                                await viewModel.applyPolicy(policy.id, to: client)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    Text(viewModel.displayPolicyName(for: client))
-                                        .font(.caption)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(Color.gray.opacity(0.12))
-                                        .clipShape(Capsule())
-                                }
-                                .frame(width: LayoutMetrics.policyWidth, alignment: .trailing)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .listStyle(.inset(alternatesRowBackgrounds: true))
-                    }
+        }
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    editorPayload = viewModel.makeNewEditorPayload()
+                } label: {
+                    Label(localization.text("action.add"), systemImage: "plus")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Button {
+                    editorPayload = viewModel.makeEditorPayloadForSelected()
+                } label: {
+                    Label(localization.text("action.edit"), systemImage: "pencil")
+                }
+                .disabled(viewModel.selectedProfile == nil)
+
+                Button(role: .destructive) {
+                    isDeleteConfirmationShown = true
+                } label: {
+                    Label(localization.text("action.delete"), systemImage: "trash")
+                }
+                .disabled(viewModel.selectedProfile == nil)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            ToolbarItemGroup {
+                Button(localization.text("action.connect")) {
+                    Task {
+                        await viewModel.connectSelectedProfile()
+                    }
+                }
+                .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
+
+                Button(localization.text("action.refresh")) {
+                    Task {
+                        await viewModel.refreshClients()
+                    }
+                }
+                .disabled(!viewModel.isConnected || viewModel.isBusy)
+
+                Button {
+                    appUI.presentDiagnostics(for: viewModel.makeDiagnosticsPayloadForSelected())
+                } label: {
+                    Label(localization.text("action.diagnose"), systemImage: "stethoscope")
+                }
+                .disabled(viewModel.selectedProfile == nil)
+
+                Button {
+                    appUI.presentDashboard()
+                } label: {
+                    Label(localization.text("action.openDashboard"), systemImage: "rectangle.3.group.bubble.left")
+                }
+
+                Menu {
+                    Section(localization.text("filters.visibility")) {
+                        Toggle(localization.text("toggle.my"), isOn: $viewModel.showOnlyMyDevices)
+                    }
+
+                    Section(localization.text("filters.status")) {
+                        Picker(localization.text("filters.status"), selection: $statusFilter) {
+                            Text(localization.text("filters.status.all")).tag(ClientStatusFilter.all)
+                            Text(localization.text("filters.status.online")).tag(ClientStatusFilter.online)
+                            Text(localization.text("filters.status.offline")).tag(ClientStatusFilter.offline)
+                            Text(localization.text("filters.status.blocked")).tag(ClientStatusFilter.blocked)
+                        }
+                    }
+
+                    Section(localization.text("filters.policy")) {
+                        Button(localization.text("filters.policy.all")) {
+                            policyFilter = .all
+                        }
+                        Button(localization.text("policy.default")) {
+                            policyFilter = .defaultPolicy
+                        }
+                        Button(localization.text("policy.blocked")) {
+                            policyFilter = .blocked
+                        }
+
+                        if !viewModel.policies.isEmpty {
+                            Divider()
+                        }
+
+                        ForEach(viewModel.policies) { policy in
+                            Button(policy.displayName) {
+                                policyFilter = .policy(policy.id)
+                            }
+                        }
+                    }
+
+                    Section(localization.text("filters.segment")) {
+                        Button(localization.text("filters.segment.all")) {
+                            segmentFilter = nil
+                        }
+
+                        ForEach(availableSegments, id: \.self) { segment in
+                            Button(segment) {
+                                segmentFilter = segment
+                            }
+                        }
+                    }
+
+                    Section(localization.text("filters.sort")) {
+                        Picker(localization.text("filters.sort"), selection: $sortMode) {
+                            Text(localization.text("filters.sort.smart")).tag(ClientSortMode.smart)
+                            Text(localization.text("filters.sort.name")).tag(ClientSortMode.name)
+                            Text(localization.text("filters.sort.ip")).tag(ClientSortMode.ip)
+                            Text(localization.text("filters.sort.segment")).tag(ClientSortMode.segment)
+                            Text(localization.text("filters.sort.policy")).tag(ClientSortMode.policy)
+                        }
+                    }
+
+                    Divider()
+
+                    Button(localization.text("filters.reset")) {
+                        resetFilters()
+                    }
+                    .disabled(activeFilterCount == 0 && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } label: {
+                    Label(
+                        activeFilterCount > 0
+                            ? localization.text("filters.title.count", args: [activeFilterCount])
+                            : localization.text("filters.title"),
+                        systemImage: activeFilterCount > 0
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
+                    )
+                }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isInspectorPresented.toggle()
+                } label: {
+                    Label(
+                        localization.text(
+                            isInspectorPresented
+                                ? "action.hideInspector"
+                                : "action.showInspector"
+                        ),
+                        systemImage: "info.circle"
+                    )
+                }
+                .help(
+                    localization.text(
+                        isInspectorPresented
+                            ? "action.hideInspector"
+                            : "action.showInspector"
+                    )
+                )
+            }
+        }
+        .inspector(isPresented: $isInspectorPresented) {
+            ClientInspectorView(client: viewModel.selectedClient)
+                .environmentObject(localization)
+                .environmentObject(viewModel)
+                .inspectorColumnWidth(LayoutMetrics.inspectorWidth)
+        }
+        .fileImporter(
+            isPresented: $appUI.isImportingConfiguration,
+            allowedContentTypes: [.json]
+        ) { result in
+            handleImport(result)
+        }
+        .fileExporter(
+            isPresented: $appUI.isExportingConfiguration,
+            document: appUI.exportDocument,
+            contentType: .json,
+            defaultFilename: appUI.exportFilename
+        ) { result in
+            handleExport(result)
         }
         .sheet(item: $editorPayload) { payload in
             RouterEditorView(
@@ -321,8 +346,26 @@ struct ContentView: View {
                 onSave: { savedPayload in
                     viewModel.saveProfile(savedPayload)
                     editorPayload = nil
+                },
+                onDiagnose: { draft in
+                    try await viewModel.runDiagnostics(for: draft)
                 }
             )
+            .environmentObject(localization)
+        }
+        .sheet(item: $appUI.diagnosticsPayload) { payload in
+            ConnectionDiagnosticsView(
+                payload: payload,
+                runDiagnostics: { draft in
+                    try await viewModel.runDiagnostics(for: draft)
+                }
+            )
+            .environmentObject(localization)
+        }
+        .sheet(isPresented: $appUI.isDashboardPresented) {
+            DashboardView()
+                .environmentObject(localization)
+                .environmentObject(viewModel)
         }
         .confirmationDialog(
             localization.text("dialog.deleteRouter.title"),
@@ -344,9 +387,6 @@ struct ContentView: View {
         .task {
             viewModel.loadData()
         }
-        .onAppear {
-            applyWindowLayout()
-        }
         .onChange(of: columnVisibility) { _, newValue in
             handleColumnVisibilityChange(newValue)
         }
@@ -357,8 +397,502 @@ struct ContentView: View {
             viewModel.relocalizeVisibleTexts()
         }
     }
+
+    private var sidebar: some View {
+        List(selection: $viewModel.selectedProfileID) {
+            ForEach(viewModel.profiles) { profile in
+                HStack(spacing: 10) {
+                    Image(systemName: "network")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.name)
+                            .lineLimit(1)
+
+                        Text(profile.address)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .tag(profile.id)
+                .contextMenu {
+                    Button(localization.text("action.edit")) {
+                        editorPayload = viewModel.makeEditorPayloadForSelected()
+                    }
+
+                    Button(localization.text("action.diagnose")) {
+                        appUI.presentDiagnostics(for: viewModel.makeDiagnosticsPayloadForSelected())
+                    }
+
+                    Divider()
+
+                    Button(localization.text("action.delete"), role: .destructive) {
+                        isDeleteConfirmationShown = true
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationSplitViewColumnWidth(
+            min: LayoutMetrics.sidebarWidth,
+            ideal: LayoutMetrics.sidebarWidth,
+            max: LayoutMetrics.sidebarWidth
+        )
+    }
+
+    private var detail: some View {
+        Group {
+            if viewModel.selectedProfile == nil {
+                ContentUnavailableView(
+                    localization.text("empty.noRouterSelected.title"),
+                    systemImage: "network",
+                    description: Text(localization.text("empty.noRouterSelected.subtitle"))
+                )
+            } else if !viewModel.isConnected {
+                VStack(spacing: 16) {
+                    ContentUnavailableView(
+                        localization.text("empty.notConnected.title"),
+                        systemImage: "network",
+                        description: Text(localization.text("empty.notConnected.subtitle"))
+                    )
+
+                    Button(localization.text("action.connect")) {
+                        Task {
+                            await viewModel.connectSelectedProfile()
+                        }
+                    }
+                    .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    header
+
+                    if visibleClients.isEmpty {
+                        emptyResultsView
+                    } else {
+                        clientTable
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.connectedProfile?.name ?? localization.text("router.fallbackName"))
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(1)
+
+                    Text(viewModel.connectedAddress ?? localization.text("common.notAvailable"))
+                        .font(.callout.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+
+                Spacer()
+
+                if let lastRefreshDate = viewModel.lastRefreshDate {
+                    Text(localization.text("dashboard.lastRefresh.inline", args: [DateFormatter.inlineRefresh.string(from: lastRefreshDate)]))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Text(viewModel.statusMessage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            if activeFilterCount > 0 || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(localization.text("filters.resultsCount", args: [visibleClients.count]))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+
+    private var clientTable: some View {
+        Table(visibleClients, selection: $viewModel.selectedClientID) {
+            TableColumn(localization.text("table.status")) { client in
+                Circle()
+                    .fill(client.isOnline ? Color.green : Color.secondary)
+                    .frame(
+                        width: LayoutMetrics.statusIndicatorSize,
+                        height: LayoutMetrics.statusIndicatorSize
+                    )
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .help(client.isOnline ? localization.text("client.online") : localization.text("client.offline"))
+            }
+            .width(LayoutMetrics.statusColumnWidth)
+
+            TableColumn(localization.text("table.client")) { client in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(client.name)
+                        .lineLimit(1)
+
+                    Text(client.mac)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .width(
+                min: LayoutMetrics.clientColumnMinimumWidth,
+                ideal: LayoutMetrics.clientColumnIdealWidth,
+                max: nil
+            )
+
+            TableColumn(localization.text("table.ip")) { client in
+                Text(client.ip)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+            }
+            .width(LayoutMetrics.ipColumnWidth)
+
+            TableColumn(localization.text("table.segment")) { client in
+                Text(viewModel.displaySegmentSummary(for: client))
+                    .lineLimit(1)
+            }
+            .width(
+                min: LayoutMetrics.segmentColumnMinimumWidth,
+                ideal: LayoutMetrics.segmentColumnIdealWidth,
+                max: nil
+            )
+
+            TableColumn(localization.text("table.connection")) { client in
+                Text(viewModel.displayConnectionSummary(for: client))
+                    .lineLimit(1)
+            }
+            .width(LayoutMetrics.connectionColumnWidth)
+
+            TableColumn(localization.text("table.policy")) { client in
+                ClientPolicyMenu(client: client)
+                    .environmentObject(localization)
+                    .environmentObject(viewModel)
+            }
+            .width(LayoutMetrics.policyColumnWidth)
+        }
+    }
+
+    private var emptyResultsView: some View {
+        Group {
+            if viewModel.clients.isEmpty {
+                ContentUnavailableView(
+                    localization.text("empty.noClients.title"),
+                    systemImage: "desktopcomputer",
+                    description: Text(localization.text("empty.noClients.subtitle"))
+                )
+            } else if viewModel.isMineFilterActiveWithoutMatches && activeFilterCount == 1 && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView(
+                    localization.text("empty.noMineClients.title"),
+                    systemImage: "laptopcomputer",
+                    description: Text(localization.text("empty.noMineClients.subtitle"))
+                )
+            } else {
+                VStack(spacing: 16) {
+                    ContentUnavailableView(
+                        localization.text("empty.noFilteredClients.title"),
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text(localization.text("empty.noFilteredClients.subtitle"))
+                    )
+
+                    Button(localization.text("filters.reset")) {
+                        resetFilters()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func matchesSearch(_ client: RouterClient, query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+
+        let values = [
+            client.name,
+            client.ip,
+            client.mac,
+            viewModel.displayPolicyName(for: client),
+            viewModel.displaySegmentSummary(for: client),
+            viewModel.displayConnectionSummary(for: client)
+        ]
+
+        return values.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func matchesStatusFilter(_ client: RouterClient) -> Bool {
+        switch statusFilter {
+        case .all:
+            return true
+        case .online:
+            return client.isOnline
+        case .offline:
+            return !client.isOnline
+        case .blocked:
+            return client.access.lowercased() == "deny"
+        }
+    }
+
+    private func matchesPolicyFilter(_ client: RouterClient) -> Bool {
+        switch policyFilter {
+        case .all:
+            return true
+        case .defaultPolicy:
+            return client.access.lowercased() != "deny" && client.policy == nil
+        case .blocked:
+            return client.access.lowercased() == "deny"
+        case let .policy(policyID):
+            return client.policy == policyID && client.access.lowercased() != "deny"
+        }
+    }
+
+    private func matchesSegmentFilter(_ client: RouterClient) -> Bool {
+        guard let segmentFilter else { return true }
+        return viewModel.displaySegmentSummary(for: client).caseInsensitiveCompare(segmentFilter) == .orderedSame
+    }
+
+    private func clientComparator(_ lhs: RouterClient, _ rhs: RouterClient) -> Bool {
+        switch sortMode {
+        case .smart:
+            if lhs.isOnline != rhs.isOnline {
+                return lhs.isOnline && !rhs.isOnline
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        case .name:
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        case .ip:
+            return lhs.ip.localizedCaseInsensitiveCompare(rhs.ip) == .orderedAscending
+        case .segment:
+            return viewModel.displaySegmentSummary(for: lhs)
+                .localizedCaseInsensitiveCompare(viewModel.displaySegmentSummary(for: rhs)) == .orderedAscending
+        case .policy:
+            return viewModel.displayPolicyName(for: lhs)
+                .localizedCaseInsensitiveCompare(viewModel.displayPolicyName(for: rhs)) == .orderedAscending
+        }
+    }
+
+    private func resetFilters() {
+        searchText = ""
+        statusFilter = .all
+        sortMode = .smart
+        policyFilter = .all
+        segmentFilter = nil
+        viewModel.showOnlyMyDevices = false
+    }
+
+    private func handleColumnVisibilityChange(_ newValue: NavigationSplitViewVisibility) {
+        let isRouterListVisible = newValue.isRouterListVisible
+        if viewModel.isRouterListVisible != isRouterListVisible {
+            viewModel.isRouterListVisible = isRouterListVisible
+        }
+    }
+
+    private func restoreColumnVisibility(isRouterListVisible: Bool) {
+        let targetVisibility = NavigationSplitViewVisibility(isRouterListVisible: isRouterListVisible)
+        guard columnVisibility != targetVisibility else { return }
+        columnVisibility = targetVisibility
+    }
+
+    private func handleImport(_ result: Result<URL, Error>) {
+        switch result {
+        case let .success(url):
+            let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
+            defer {
+                if didAccessSecurityScope {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                try viewModel.importConfiguration(from: url)
+            } catch {
+                viewModel.present(error: error)
+            }
+        case let .failure(error):
+            if (error as NSError).code != NSUserCancelledError {
+                viewModel.present(error: error)
+            }
+        }
+    }
+
+    private func handleExport(_ result: Result<URL, Error>) {
+        appUI.finishConfigurationExport()
+
+        switch result {
+        case .success:
+            viewModel.noteConfigurationExportCompleted()
+        case let .failure(error):
+            if (error as NSError).code != NSUserCancelledError {
+                viewModel.present(error: error)
+            }
+        }
+    }
+}
+
+private struct ClientPolicyMenu: View {
+    @EnvironmentObject private var localization: LocalizationManager
+    @EnvironmentObject private var viewModel: MainViewModel
+
+    let client: RouterClient
+    var title: String?
+
+    var body: some View {
+        Menu {
+            Button(localization.text("policy.default")) {
+                Task {
+                    await viewModel.applyPolicy(nil, to: client)
+                }
+            }
+
+            Button(localization.text("policy.blocked")) {
+                Task {
+                    await viewModel.setClientBlocked(client)
+                }
+            }
+
+            if !viewModel.policies.isEmpty {
+                Divider()
+            }
+
+            ForEach(viewModel.policies) { policy in
+                Button(policy.displayName) {
+                    Task {
+                        await viewModel.applyPolicy(policy.id, to: client)
+                    }
+                }
+            }
+        } label: {
+            Text(title ?? viewModel.displayPolicyName(for: client))
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct ClientInspectorView: View {
+    @EnvironmentObject private var localization: LocalizationManager
+    @EnvironmentObject private var viewModel: MainViewModel
+
+    let client: RouterClient?
+
+    var body: some View {
+        Group {
+            if let client {
+                Form {
+                    Section(localization.text("inspector.overview")) {
+                        LabeledContent(localization.text("inspector.name")) {
+                            Text(client.name)
+                        }
+
+                        LabeledContent(localization.text("inspector.status")) {
+                            Label(
+                                client.isOnline ? localization.text("client.online") : localization.text("client.offline"),
+                                systemImage: client.isOnline ? "dot.radiowaves.left.and.right" : "slash.circle"
+                            )
+                            .foregroundStyle(client.isOnline ? Color.green : Color.secondary)
+                        }
+
+                        LabeledContent(localization.text("inspector.ip")) {
+                            Text(client.ip)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                        }
+
+                        LabeledContent(localization.text("inspector.mac")) {
+                            Text(client.mac)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    Section(localization.text("inspector.network")) {
+                        LabeledContent(localization.text("inspector.segment")) {
+                            Text(viewModel.displaySegmentSummary(for: client))
+                        }
+
+                        LabeledContent(localization.text("inspector.connection")) {
+                            Text(viewModel.displayConnectionSummary(for: client))
+                        }
+
+                        if let trafficPriority = client.trafficPriority, !trafficPriority.isEmpty {
+                            LabeledContent(localization.text("inspector.priority")) {
+                                Text(trafficPriority)
+                            }
+                        }
+                    }
+
+                    Section(localization.text("inspector.access")) {
+                        LabeledContent(localization.text("inspector.policy")) {
+                            Text(viewModel.displayPolicyName(for: client))
+                        }
+
+                        HStack {
+                            ClientPolicyMenu(
+                                client: client,
+                                title: localization.text("action.changePolicy")
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button(localization.text("action.block")) {
+                                Task {
+                                    await viewModel.setClientBlocked(client)
+                                }
+                            }
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+            } else {
+                ContentUnavailableView(
+                    localization.text("inspector.emptyTitle"),
+                    systemImage: "info.circle",
+                    description: Text(localization.text("inspector.emptySubtitle"))
+                )
+            }
+        }
+        .frame(minWidth: 280)
+    }
+}
+
+private extension Array where Element == String {
+    func uniqued() -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+
+        for value in self {
+            let key = value.lowercased()
+            if seen.insert(key).inserted {
+                result.append(value)
+            }
+        }
+
+        return result
+    }
+}
+
+private extension DateFormatter {
+    static let inlineRefresh: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
 #Preview {
     ContentView()
+        .environmentObject(LocalizationManager.shared)
+        .environmentObject(MainViewModel())
+        .environmentObject(AppUIState())
 }

@@ -11,23 +11,29 @@ Native macOS app for managing Keenetic and Netcraze router client profiles.
 - Stores router profiles locally in JSON.
 - Stores router passwords in the macOS Keychain.
 - Stores UI settings locally in JSON.
-- Displays router client list.
+- Searches router clients by name, IP, MAC, policy, and segment.
+- Filters router clients by online status, blocking state, policy, segment, and `My Devices`.
+- Sorts router clients by smart order, name, IP, policy, or segment.
+- Displays router clients in a native macOS table with a details inspector.
 - Client sorting: online devices first, then by name.
 - Assigns access policies to clients.
 - One-click internet blocking for a selected client.
 - `My Devices` filter: shows only clients whose MAC addresses match local MAC addresses on this Mac.
+- Network overview sheet with connection summary, client counters, and segment/policy breakdowns.
+- Router diagnostics helper for endpoint and authentication checks.
+- Configuration import/export in JSON format.
 - Settings window with interface language selection.
 - Localized interface strings loaded from JSON (`Russian` / `English`).
-- Fixed desktop layout optimized for the current macOS window size used by the app.
+- Native macOS menu bar, toolbar, sidebar, searchable content, and inspector patterns.
 
 ## Tech Stack
 
 - Swift
-- SwiftUI (`NavigationSplitView`)
+- SwiftUI (`NavigationSplitView`, `Table`, `inspector`, `searchable`, `sheet`, `Settings`, `Window`)
 - URLSession + Keenetic JSON API
-- AppKit bridge for main menu control and fixed window sizing
 - JSON-based runtime localization
 - Security framework (`Keychain Services`) for password storage
+- SwiftUI `FileDocument` for configuration transfer
 
 ## Requirements
 
@@ -40,15 +46,22 @@ Native macOS app for managing Keenetic and Netcraze router client profiles.
 2. Select the `KeenRouterManager` scheme.
 3. Press `Run`.
 
+The project currently requires a full Xcode installation. `xcodebuild` is not available when only Command Line Tools are selected.
+
 ## Project Structure
 
-- `KeenRouterManager/KeenRouterManagerApp.swift` - app entry point, fixed window sizing, and main menu wiring.
-- `KeenRouterManager/ContentView.swift` - main UI.
+- `KeenRouterManager/KeenRouterManagerApp.swift` - app entry point and scene wiring.
+- `KeenRouterManager/ContentView.swift` - main router browser window with sidebar, search, filters, table, and inspector.
 - `KeenRouterManager/MainViewModel.swift` - business logic and UI state.
 - `KeenRouterManager/KeeneticAPIClient.swift` - Keenetic HTTP API client.
 - `KeenRouterManager/Models.swift` - domain models.
-- `KeenRouterManager/RouterEditorView.swift` - router profile create/edit form.
+- `KeenRouterManager/RouterEditorView.swift` - router profile create/edit form with diagnostics.
 - `KeenRouterManager/SettingsView.swift` - settings window UI.
+- `KeenRouterManager/DashboardView.swift` - network overview sheet.
+- `KeenRouterManager/ConnectionDiagnosticsView.swift` - diagnostics sheet and report UI.
+- `KeenRouterManager/RouterConfigurationDocument.swift` - import/export document format.
+- `KeenRouterManager/RouterCommands.swift` - native macOS menu commands.
+- `KeenRouterManager/AppUIState.swift` - shared presentation state for import/export, network overview, and diagnostics.
 - `KeenRouterManager/LocalizationManager.swift` - runtime localization loader and language selection state.
 - `KeenRouterManager/InterfaceStrings.json` - localized interface strings.
 - `KeenRouterManager/RouterProfileStore.swift` - file storage for router profiles.
@@ -65,6 +78,8 @@ By default, files are stored in `~/Library/Application Support/KeenRouterManager
 - `settings.json` - UI settings (for example, `My Devices` filter state, selected interface language, and router list visibility)
 
 Router passwords are stored in the system Keychain.
+
+Configuration export files intentionally exclude passwords. Exported JSON contains router profiles and app settings only; imported profiles continue using Keychain passwords already available on the current Mac.
 
 ## Notes and Limitations
 
