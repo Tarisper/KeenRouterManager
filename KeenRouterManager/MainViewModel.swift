@@ -2,16 +2,27 @@ import Combine
 import Foundation
 
 /**
- * Main view model of the application.
+ * Main application model shared across the main window and modal overview flows.
  *
  * Responsibilities:
  * - router profile management;
  * - connecting and loading clients/policies;
- * - applying policies to clients;
- * - persisting and restoring UI settings.
+ * - client policy changes;
+ * - app settings persistence;
+ * - network overview summaries;
+ * - diagnostics and configuration import/export.
  */
 @MainActor
 final class MainViewModel: ObservableObject {
+    /**
+     * Compact label/count pair used by dashboard breakdown sections.
+     */
+    struct BreakdownItem: Identifiable, Hashable {
+        var id: String { title }
+        let title: String
+        let count: Int
+    }
+
     private enum StatusState {
         case selectRouterAndConnect
         case savedRouters(count: Int)
@@ -24,10 +35,13 @@ final class MainViewModel: ObservableObject {
         case refreshed(at: Date)
         case clientProfileUpdated(name: String)
         case clientBlocked(name: String)
+        case configurationImported(count: Int)
+        case configurationExported
     }
 
     @Published private(set) var profiles: [RouterProfile] = []
     @Published var selectedProfileID: UUID?
+    @Published var selectedClientID: String?
     @Published var showOnlyMyDevices = false {
         didSet {
             guard showOnlyMyDevices != oldValue else { return }
@@ -53,6 +67,7 @@ final class MainViewModel: ObservableObject {
     @Published private(set) var isConnected = false
     @Published private(set) var connectedAddress: String?
     @Published private(set) var statusMessage = ""
+    @Published private(set) var lastRefreshDate: Date?
     @Published var errorMessage: String?
     @Published var isErrorPresented = false
 
@@ -61,31 +76,25 @@ final class MainViewModel: ObservableObject {
     private let credentialsStore: CredentialsStore = KeychainCredentialsStore()
     private let settingsStore = FileAppSettingsStore()
     private let localMACAddressProvider = LocalMACAddressProvider()
+
     private var apiClient: KeeneticAPIClient?
     private var connectedProfileID: UUID?
     private var localMACAddresses: Set<String> = []
     private var isRestoringSettings = false
+    private var hasLoadedInitialData = false
     private var statusState: StatusState = .selectRouterAndConnect
 
     /**
-     * Creates the main view model using the shared localization manager.
+     * Creates the shared main model.
+     * - Parameter localization: Localization service for all user-facing text.
      */
-    init() {
-        self.localization = .shared
-        setStatus(.selectRouterAndConnect)
-    }
-
-    /**
-     * Creates the main view model.
-     * - Parameter localization: Localization manager for user-facing text.
-     */
-    init(localization: LocalizationManager) {
+    init(localization: LocalizationManager = .shared) {
         self.localization = localization
         setStatus(.selectRouterAndConnect)
     }
 
     /**
-     * Rebuilds currently visible localized texts after language change.
+     * Rebuilds the current status string after a language change.
      */
     func relocalizeVisibleTexts() {
         statusMessage = localizedStatus(for: statusState)
@@ -100,7 +109,23 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Client list with the "My devices" filter applied.
+     * Router profile that owns the active connection, if any.
+     */
+    var connectedProfile: RouterProfile? {
+        guard let connectedProfileID else { return nil }
+        return profiles.first(where: { $0.id == connectedProfileID })
+    }
+
+    /**
+     * Currently selected client in the table.
+     */
+    var selectedClient: RouterClient? {
+        guard let selectedClientID else { return nil }
+        return clients.first(where: { $0.id == selectedClientID })
+    }
+
+    /**
+     * Client list with the persistent "My Devices" filter applied.
      */
     var filteredClients: [RouterClient] {
         guard showOnlyMyDevices else { return clients }
@@ -108,86 +133,73 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Indicates that the "My devices" filter is active without matches.
+     * Indicates that the "My Devices" filter is active without matches.
      */
     var isMineFilterActiveWithoutMatches: Bool {
         showOnlyMyDevices && !clients.isEmpty && filteredClients.isEmpty
     }
 
     /**
-     * Returns the display name of a client's access policy.
-     * - Parameter client: Router client.
-     * - Returns: User-facing policy label for UI.
+     * Human-readable timestamp for the dashboard.
      */
-    func displayPolicyName(for client: RouterClient) -> String {
-        if client.access.lowercased() == "deny" {
-            return localization.text("policy.blocked")
+    var lastRefreshDescription: String {
+        guard let lastRefreshDate else {
+            return localization.text("common.notAvailable")
         }
-        guard let policyID = client.policy else {
-            return localization.text("policy.default")
-        }
-        if let mapped = policies.first(where: { $0.id == policyID }) {
-            return mapped.displayName
-        }
-        return policyID
+        return DateFormatter.dashboardTimestamp.string(from: lastRefreshDate)
     }
 
     /**
-     * Returns a readable segment summary for a client.
-     * - Parameter client: Router client.
-     * - Returns: Cleaned segment string.
+     * Number of online clients in the active router snapshot.
      */
-    func displaySegmentSummary(for client: RouterClient) -> String {
-        let title = cleanedSegmentValue(client.segmentTitle)
-        let subtitle = cleanedSegmentValue(client.segmentSubtitle)
-
-        if let title, let subtitle {
-            if title.caseInsensitiveCompare(subtitle) == .orderedSame {
-                return title
-            }
-            return "\(title) \(subtitle)"
-        }
-
-        if let title {
-            return title
-        }
-
-        if let subtitle {
-            return subtitle
-        }
-
-        return localization.text("common.notAvailable")
+    var onlineClientCount: Int {
+        clients.filter(\.isOnline).count
     }
 
     /**
-     * Returns a readable connection summary for a client.
-     * - Parameter client: Router client.
-     * - Returns: Primary and secondary connection information.
+     * Number of blocked clients in the active router snapshot.
      */
-    func displayConnectionSummary(for client: RouterClient) -> String {
-        let title = nonEmpty(client.connectionTitle) ?? localization.text("common.notAvailable")
-        if let subtitle = nonEmpty(client.connectionSubtitle) {
-            return "\(title) · \(subtitle)"
-        }
-        return title
+    var blockedClientCount: Int {
+        clients.filter { $0.access.lowercased() == "deny" }.count
     }
 
     /**
-     * Loads profiles and application settings at startup.
+     * Number of current router clients that match this Mac's local interfaces.
+     */
+    var myClientCount: Int {
+        clients.filter { localMACAddresses.contains($0.mac.lowercased()) }.count
+    }
+
+    /**
+     * Policy breakdown for the network overview sheet.
+     */
+    var policyBreakdown: [BreakdownItem] {
+        makeBreakdown(from: clients.map { displayPolicyName(for: $0) })
+    }
+
+    /**
+     * Segment breakdown for the network overview sheet.
+     */
+    var segmentBreakdown: [BreakdownItem] {
+        makeBreakdown(from: clients.map { displaySegmentSummary(for: $0) })
+    }
+
+    /**
+     * Loads profiles and persisted app settings once per app launch.
      */
     func loadData() {
+        guard !hasLoadedInitialData else { return }
+
         do {
-            profiles = try profileStore.loadProfiles()
+            profiles = try loadSortedProfiles()
             localMACAddresses = localMACAddressProvider.loadMACAddresses()
-            let settings = try settingsStore.load()
-            isRestoringSettings = true
-            defer { isRestoringSettings = false }
-            showOnlyMyDevices = settings.showOnlyMyDevices
-            isRouterListVisible = settings.isRouterListVisible
+            apply(settings: try settingsStore.load())
 
             if selectedProfileID == nil {
                 selectedProfileID = profiles.first?.id
             }
+
+            hasLoadedInitialData = true
             setStatus(.savedRouters(count: profiles.count))
         } catch {
             present(error: error)
@@ -195,16 +207,15 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Builds an empty payload for creating a new profile.
-     * - Returns: Payload with default values.
+     * Builds an empty payload for creating a new router profile.
      */
     func makeNewEditorPayload() -> RouterEditorPayload {
         RouterEditorPayload(profileID: nil, name: "", address: "", username: "admin", password: "")
     }
 
     /**
-     * Builds an editor payload for the selected profile.
-     * - Returns: Payload with current values, or `nil` if no profile is selected.
+     * Builds an editor payload for the selected router profile.
+     * - Returns: Current router data and password, or `nil` if unavailable.
      */
     func makeEditorPayloadForSelected() -> RouterEditorPayload? {
         guard let profile = selectedProfile else {
@@ -229,8 +240,15 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Creates or updates a router profile and stores credentials.
-     * - Parameter payload: Profile editor form values.
+     * Builds a payload for router diagnostics using the selected saved profile.
+     */
+    func makeDiagnosticsPayloadForSelected() -> RouterEditorPayload? {
+        makeEditorPayloadForSelected()
+    }
+
+    /**
+     * Creates or updates a router profile and stores credentials in Keychain.
+     * - Parameter payload: Form values from the router editor.
      */
     func saveProfile(_ payload: RouterEditorPayload) {
         let trimmedName = payload.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -246,7 +264,6 @@ final class MainViewModel: ObservableObject {
         do {
             let normalizedAddress = try KeeneticAPIClient.normalizedBaseAddress(from: trimmedAddress)
             let profileID = payload.profileID ?? UUID()
-
             let profile = RouterProfile(
                 id: profileID,
                 name: trimmedName,
@@ -277,7 +294,7 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Deletes the selected profile and its stored credentials.
+     * Deletes the selected router profile and its stored password.
      */
     func deleteSelectedProfile() {
         guard let selectedProfile else { return }
@@ -289,17 +306,18 @@ final class MainViewModel: ObservableObject {
 
             if connectedProfileID == selectedProfile.id {
                 disconnect(withStatus: .profileDeleted)
+            } else {
+                setStatus(.profileDeleted)
             }
 
             selectedProfileID = profiles.first?.id
-            setStatus(.profileDeleted)
         } catch {
             present(error: error)
         }
     }
 
     /**
-     * Connects to the selected router and loads clients/policies.
+     * Connects to the selected router and loads current clients and policies.
      */
     func connectSelectedProfile() async {
         guard let profile = selectedProfile else {
@@ -326,14 +344,16 @@ final class MainViewModel: ObservableObject {
             try await client.authenticate()
             let fetchedPolicies = try await client.fetchPolicies()
             let fetchedClients = try await client.fetchClients()
+            let refreshedAt = Date()
 
-            self.apiClient = client
-            self.connectedProfileID = profile.id
-            self.isConnected = true
-            self.connectedAddress = client.connectionAddress
-            self.policies = fetchedPolicies
-            self.clients = fetchedClients
-            self.setStatus(.connected(address: client.connectionAddress))
+            apiClient = client
+            connectedProfileID = profile.id
+            isConnected = true
+            connectedAddress = client.connectionAddress
+            policies = fetchedPolicies
+            setClients(fetchedClients)
+            lastRefreshDate = refreshedAt
+            setStatus(.connected(address: client.connectionAddress))
         } catch {
             present(error: error)
             disconnect(withStatus: .connectFailed)
@@ -343,7 +363,7 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Refreshes clients and policies for an existing connection.
+     * Refreshes the client and policy snapshot for the active router connection.
      */
     func refreshClients() async {
         guard let apiClient else {
@@ -357,17 +377,19 @@ final class MainViewModel: ObservableObject {
         do {
             localMACAddresses = localMACAddressProvider.loadMACAddresses()
             policies = try await apiClient.fetchPolicies()
-            clients = try await apiClient.fetchClients()
-            setStatus(.refreshed(at: Date()))
+            setClients(try await apiClient.fetchClients())
+            let refreshedAt = Date()
+            lastRefreshDate = refreshedAt
+            setStatus(.refreshed(at: refreshedAt))
         } catch {
             present(error: error)
         }
     }
 
     /**
-     * Applies an access policy to a client.
+     * Applies an access policy to a router client.
      * - Parameters:
-     *   - policyID: Policy identifier, or `nil` for the default policy.
+     *   - policyID: Policy identifier, or `nil` for the router default.
      *   - client: Target router client.
      */
     func applyPolicy(_ policyID: String?, to client: RouterClient) async {
@@ -383,6 +405,7 @@ final class MainViewModel: ObservableObject {
             try await apiClient.applyPolicy(mac: client.mac, policy: policyID)
             if let index = clients.firstIndex(where: { $0.id == client.id }) {
                 clients[index].policy = policyID
+                clients[index].access = "permit"
             }
             setStatus(.clientProfileUpdated(name: client.name))
         } catch {
@@ -391,7 +414,7 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
-     * Blocks internet access for a client.
+     * Blocks internet access for a router client.
      * - Parameter client: Target router client.
      */
     func setClientBlocked(_ client: RouterClient) async {
@@ -415,23 +438,235 @@ final class MainViewModel: ObservableObject {
         }
     }
 
+    /**
+     * Runs a connection diagnostic without mutating the active router session.
+     * - Parameter payload: Router address and credentials to validate.
+     * - Returns: Diagnostic report with endpoint attempts and guidance.
+     * - Throws: Validation or address parsing error before network work starts.
+     */
+    func runDiagnostics(for payload: RouterEditorPayload) async throws -> ConnectionDiagnosticReport {
+        let trimmedAddress = payload.address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUsername = payload.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitizedPassword = payload.password.trimmingCharacters(in: .newlines)
+
+        guard !trimmedAddress.isEmpty, !trimmedUsername.isEmpty, !sanitizedPassword.isEmpty else {
+            throw LocalizedMessageError(message: localization.text("error.diagnostics.fillRequiredFields"))
+        }
+
+        let client = try KeeneticAPIClient(
+            address: trimmedAddress,
+            username: trimmedUsername,
+            password: sanitizedPassword
+        )
+        return await client.diagnoseConnection()
+    }
+
+    /**
+     * Prepares the current app configuration for export.
+     * - Returns: File document ready for `fileExporter`.
+     * - Throws: File system read error.
+     */
+    func makeConfigurationDocument() throws -> RouterConfigurationDocument {
+        RouterConfigurationDocument(
+            archive: RouterConfigurationArchive(
+                appSettings: currentSettingsSnapshot(),
+                profiles: profiles
+            )
+        )
+    }
+
+    /**
+     * Suggested export filename for the configuration document.
+     */
+    var defaultConfigurationExportFilename: String {
+        "KeenRouterManager-Configuration-\(DateFormatter.exportFilename.string(from: Date()))"
+    }
+
+    /**
+     * Imports router profiles and app settings from a configuration file URL.
+     * - Parameter url: Picked file URL.
+     * - Throws: Decode, validation, or persistence error.
+     */
+    func importConfiguration(from url: URL) throws {
+        let data = try Data(contentsOf: url)
+        let archive = try RouterConfigurationDocument.decodeArchive(from: data)
+        try applyImportedConfiguration(archive)
+    }
+
+    /**
+     * Marks configuration export as completed in the status area.
+     */
+    func noteConfigurationExportCompleted() {
+        setStatus(.configurationExported)
+    }
+
+    /**
+     * Presents a user-facing error.
+     * - Parameter error: Error to expose through the shared alert.
+     */
+    func present(error: Error) {
+        present(errorMessage: error.localizedDescription)
+    }
+
+    /**
+     * Presents a user-facing error message.
+     * - Parameter errorMessage: Message shown in the shared alert.
+     */
+    func present(errorMessage: String) {
+        self.errorMessage = errorMessage
+        isErrorPresented = true
+    }
+
+    /**
+     * User-facing policy label for a client.
+     * - Parameter client: Router client.
+     * - Returns: Current policy label or fallback description.
+     */
+    func displayPolicyName(for client: RouterClient) -> String {
+        if client.access.lowercased() == "deny" {
+            return localization.text("policy.blocked")
+        }
+        guard let policyID = client.policy else {
+            return localization.text("policy.default")
+        }
+        if let mapped = policies.first(where: { $0.id == policyID }) {
+            return mapped.displayName
+        }
+        return policyID
+    }
+
+    /**
+     * Readable segment summary for a client.
+     * - Parameter client: Router client.
+     * - Returns: Cleaned segment string.
+     */
+    func displaySegmentSummary(for client: RouterClient) -> String {
+        let title = cleanedSegmentValue(client.segmentTitle)
+        let subtitle = cleanedSegmentValue(client.segmentSubtitle)
+
+        if let title, let subtitle {
+            if title.caseInsensitiveCompare(subtitle) == .orderedSame {
+                return title
+            }
+            return "\(title) \(subtitle)"
+        }
+
+        if let title {
+            return title
+        }
+
+        if let subtitle {
+            return subtitle
+        }
+
+        return localization.text("common.notAvailable")
+    }
+
+    /**
+     * Readable connection summary for a client.
+     * - Parameter client: Router client.
+     * - Returns: Primary and secondary connection information.
+     */
+    func displayConnectionSummary(for client: RouterClient) -> String {
+        let title = nonEmpty(client.connectionTitle) ?? localization.text("common.notAvailable")
+        if let subtitle = nonEmpty(client.connectionSubtitle) {
+            return "\(title) · \(subtitle)"
+        }
+        return title
+    }
+
+    private func applyImportedConfiguration(_ archive: RouterConfigurationArchive) throws {
+        profiles = mergeProfiles(existing: profiles, imported: archive.profiles)
+        try profileStore.saveProfiles(profiles)
+
+        localMACAddresses = localMACAddressProvider.loadMACAddresses()
+        let importedSettings = archive.appSettings
+        try settingsStore.save(importedSettings)
+        apply(settings: importedSettings)
+
+        if let importedLanguage = AppLanguage.resolve(code: importedSettings.interfaceLanguageCode) {
+            localization.language = importedLanguage
+        }
+
+        if isConnected {
+            disconnect(withStatus: .configurationImported(count: archive.profiles.count))
+        } else {
+            setStatus(.configurationImported(count: archive.profiles.count))
+        }
+
+        if selectedProfileID == nil || !profiles.contains(where: { $0.id == selectedProfileID }) {
+            selectedProfileID = profiles.first?.id
+        }
+
+        hasLoadedInitialData = true
+    }
+
+    private func mergeProfiles(existing: [RouterProfile], imported: [RouterProfile]) -> [RouterProfile] {
+        var merged = existing
+
+        for incoming in imported {
+            if let index = merged.firstIndex(where: { $0.id == incoming.id || isSameRouterDefinition($0, incoming) }) {
+                let preservedID = merged[index].id
+                merged[index] = RouterProfile(
+                    id: preservedID,
+                    name: incoming.name,
+                    address: incoming.address,
+                    username: incoming.username
+                )
+            } else {
+                merged.append(incoming)
+            }
+        }
+
+        return merged.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func isSameRouterDefinition(_ lhs: RouterProfile, _ rhs: RouterProfile) -> Bool {
+        lhs.address.caseInsensitiveCompare(rhs.address) == .orderedSame &&
+            lhs.username.caseInsensitiveCompare(rhs.username) == .orderedSame
+    }
+
+    private func loadSortedProfiles() throws -> [RouterProfile] {
+        try profileStore.loadProfiles().sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private func currentSettingsSnapshot() -> AppSettings {
+        AppSettings(
+            showOnlyMyDevices: showOnlyMyDevices,
+            isRouterListVisible: isRouterListVisible,
+            interfaceLanguageCode: localization.language.rawValue
+        )
+    }
+
+    private func apply(settings: AppSettings) {
+        isRestoringSettings = true
+        defer { isRestoringSettings = false }
+
+        showOnlyMyDevices = settings.showOnlyMyDevices
+        isRouterListVisible = settings.isRouterListVisible
+    }
+
     private func disconnect(withStatus status: StatusState) {
         apiClient = nil
         connectedProfileID = nil
         isConnected = false
         connectedAddress = nil
+        lastRefreshDate = nil
         clients = []
         policies = []
+        selectedClientID = nil
         setStatus(status)
     }
 
-    private func present(error: Error) {
-        present(errorMessage: error.localizedDescription)
-    }
+    private func setClients(_ newClients: [RouterClient]) {
+        clients = newClients
 
-    private func present(errorMessage: String) {
-        self.errorMessage = errorMessage
-        isErrorPresented = true
+        if let selectedClientID, newClients.contains(where: { $0.id == selectedClientID }) {
+            return
+        }
+        selectedClientID = newClients.first?.id
     }
 
     private func setStatus(_ state: StatusState) {
@@ -463,6 +698,10 @@ final class MainViewModel: ObservableObject {
             return localization.text("status.clientProfileUpdated", args: [name])
         case let .clientBlocked(name):
             return localization.text("status.clientBlocked", args: [name])
+        case let .configurationImported(count):
+            return localization.text("status.configurationImported", args: [count])
+        case .configurationExported:
+            return localization.text("status.configurationExported")
         }
     }
 
@@ -475,6 +714,21 @@ final class MainViewModel: ObservableObject {
         } catch {
             present(error: error)
         }
+    }
+
+    private func makeBreakdown(from titles: [String]) -> [BreakdownItem] {
+        let counts = titles.reduce(into: [String: Int]()) { partialResult, title in
+            partialResult[title, default: 0] += 1
+        }
+
+        return counts
+            .map { BreakdownItem(title: $0.key, count: $0.value) }
+            .sorted {
+                if $0.count != $1.count {
+                    return $0.count > $1.count
+                }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
     }
 
     private func nonEmpty(_ value: String?) -> String? {
@@ -505,11 +759,32 @@ final class MainViewModel: ObservableObject {
     }
 }
 
+private struct LocalizedMessageError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? {
+        message
+    }
+}
+
 private extension DateFormatter {
     static let shortTime: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         formatter.dateStyle = .none
+        return formatter
+    }()
+
+    static let dashboardTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static let exportFilename: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 }

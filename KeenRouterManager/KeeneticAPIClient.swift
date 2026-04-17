@@ -46,6 +46,7 @@ final class KeeneticAPIClient {
     private let port: Int?
     private let preferredScheme: String
     private let hasExplicitScheme: Bool
+    private let requestedAddress: String
 
     private var baseAddress: String
     private var session: URLSession
@@ -65,8 +66,10 @@ final class KeeneticAPIClient {
      * - Throws: `RouterAPIError.invalidAddress` when the address is invalid.
      */
     init(address: String, username: String, password: String) throws {
-        let trimmedOriginal = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let rawAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedOriginal = rawAddress.lowercased()
         self.hasExplicitScheme = trimmedOriginal.hasPrefix("http://") || trimmedOriginal.hasPrefix("https://")
+        self.requestedAddress = rawAddress
 
         let normalized = try Self.normalizedBaseAddress(from: address)
         guard let components = URLComponents(string: normalized),
@@ -221,6 +224,73 @@ final class KeeneticAPIClient {
         }
 
         throw lastError
+    }
+
+    /**
+     * Runs a non-destructive connectivity and authentication diagnostic against
+     * all candidate router endpoints.
+     * - Returns: Structured diagnostic report for UI presentation.
+     */
+    func diagnoseConnection() async -> ConnectionDiagnosticReport {
+        var attempts: [ConnectionDiagnosticAttempt] = []
+        var lastError: RouterAPIError?
+
+        for candidate in baseCandidates() {
+            let delegate = InsecureRouterTLSDelegate(username: username, password: password)
+            let candidateSession = URLSession(
+                configuration: Self.makeSessionConfiguration(),
+                delegate: delegate,
+                delegateQueue: nil
+            )
+
+            do {
+                _ = try await authenticate(baseAddress: candidate, session: candidateSession)
+                attempts.append(
+                    ConnectionDiagnosticAttempt(
+                        endpoint: candidate,
+                        outcome: .success,
+                        message: Self.localization.text("diagnostics.attempt.success")
+                    )
+                )
+
+                return ConnectionDiagnosticReport(
+                    requestedAddress: requestedAddress,
+                    normalizedAddress: baseAddress,
+                    succeededEndpoint: candidate,
+                    guidance: Self.localization.text("diagnostics.guidance.success"),
+                    attempts: attempts,
+                    completedAt: Date()
+                )
+            } catch let error as RouterAPIError {
+                lastError = error
+                attempts.append(
+                    ConnectionDiagnosticAttempt(
+                        endpoint: candidate,
+                        outcome: .failure,
+                        message: error.localizedDescription
+                    )
+                )
+            } catch {
+                attempts.append(
+                    ConnectionDiagnosticAttempt(
+                        endpoint: candidate,
+                        outcome: .failure,
+                        message: error.localizedDescription
+                    )
+                )
+            }
+
+            candidateSession.invalidateAndCancel()
+        }
+
+        return ConnectionDiagnosticReport(
+            requestedAddress: requestedAddress,
+            normalizedAddress: baseAddress,
+            succeededEndpoint: nil,
+            guidance: diagnosticGuidance(for: lastError),
+            attempts: attempts,
+            completedAt: Date()
+        )
     }
 
     /**
@@ -590,6 +660,30 @@ final class KeeneticAPIClient {
         }
 
         return raw
+    }
+
+    private func diagnosticGuidance(for error: RouterAPIError?) -> String {
+        guard let error else {
+            return Self.localization.text("diagnostics.guidance.generic")
+        }
+
+        switch error {
+        case .invalidAddress:
+            return Self.localization.text("diagnostics.guidance.address")
+        case .unsupportedAuthChallenge:
+            return Self.localization.text("diagnostics.guidance.challenge")
+        case .authenticationFailed:
+            return Self.localization.text("diagnostics.guidance.credentials")
+        case let .transport(message):
+            if message.caseInsensitiveCompare(Self.localization.text("transport.tlsHandshakeFailed")) == .orderedSame {
+                return Self.localization.text("diagnostics.guidance.tls")
+            }
+            return Self.localization.text("diagnostics.guidance.network")
+        case .server:
+            return Self.localization.text("diagnostics.guidance.server")
+        case .invalidResponse:
+            return Self.localization.text("diagnostics.guidance.response")
+        }
     }
 
     private func baseCandidates() -> [String] {
