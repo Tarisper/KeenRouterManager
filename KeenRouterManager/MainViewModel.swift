@@ -117,6 +117,13 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
+     * Indicates whether the current selection already owns the active connection.
+     */
+    var isSelectedProfileConnected: Bool {
+        isConnected && selectedProfileID == connectedProfileID
+    }
+
+    /**
      * Currently selected client in the table.
      */
     var selectedClient: RouterClient? {

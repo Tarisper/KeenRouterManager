@@ -14,7 +14,7 @@ Native macOS app for managing Keenetic and Netcraze router client profiles.
 - Searches router clients by name, IP, MAC, policy, and segment.
 - Filters router clients by online status, blocking state, policy, segment, and `My Devices`.
 - Sorts router clients by smart order, name, IP, policy, or segment.
-- Displays router clients in a native macOS table with a details inspector.
+- Displays router clients in a native macOS table with a details sheet.
 - Client sorting: online devices first, then by name.
 - Assigns access policies to clients.
 - One-click internet blocking for a selected client.
@@ -24,12 +24,12 @@ Native macOS app for managing Keenetic and Netcraze router client profiles.
 - Configuration import/export in JSON format.
 - Settings window with interface language selection.
 - Localized interface strings loaded from JSON (`Russian` / `English`).
-- Native macOS menu bar, toolbar, sidebar, searchable content, and inspector patterns.
+- Native macOS menu bar, toolbar, sidebar, searchable content, and sheet-based detail patterns.
 
 ## Tech Stack
 
 - Swift
-- SwiftUI (`NavigationSplitView`, `Table`, `inspector`, `searchable`, `sheet`, `Settings`, `Window`)
+- SwiftUI (`NavigationSplitView`, `Table`, `searchable`, `sheet`, `Settings`, `Window`)
 - URLSession + Keenetic JSON API
 - JSON-based runtime localization
 - Security framework (`Keychain Services`) for password storage
@@ -51,7 +51,7 @@ The project currently requires a full Xcode installation. `xcodebuild` is not av
 ## Project Structure
 
 - `KeenRouterManager/KeenRouterManagerApp.swift` - app entry point and scene wiring.
-- `KeenRouterManager/ContentView.swift` - main router browser window with sidebar, search, filters, table, and inspector.
+- `KeenRouterManager/ContentView.swift` - main router browser window with sidebar, search, filters, table, and client details sheet.
 - `KeenRouterManager/MainViewModel.swift` - business logic and UI state.
 - `KeenRouterManager/KeeneticAPIClient.swift` - Keenetic HTTP API client.
 - `KeenRouterManager/Models.swift` - domain models.

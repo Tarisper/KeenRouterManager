@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /**
@@ -40,6 +41,12 @@ struct KeenRouterManagerApp: App {
     @StateObject private var viewModel = MainViewModel()
     @StateObject private var appUI = AppUIState()
 
+    init() {
+        // The app never uses document-style tabbed windows, so remove the
+        // system tabbing commands from the Window menu.
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     var body: some Scene {
         WindowGroup("KeenRouterManager", id: "main") {
             ContentView()
@@ -49,7 +56,6 @@ struct KeenRouterManagerApp: App {
                 .background(AppSceneActionCaptureView())
         }
         .defaultSize(width: 1240, height: 820)
-        .windowResizability(.contentMinSize)
         .commands {
             RouterCommands(
                 appState: appUI,

@@ -2,6 +2,9 @@ import SwiftUI
 
 /**
  * Native macOS menu commands for router-specific actions and file transfer.
+ *
+ * The app intentionally keeps the standard sidebar commands, but omits
+ * inspector-specific commands because client details are shown as a sheet.
  */
 struct RouterCommands: Commands {
     @ObservedObject var appState: AppUIState
@@ -14,7 +17,6 @@ struct RouterCommands: Commands {
 
     var body: some Commands {
         SidebarCommands()
-        InspectorCommands()
         ToolbarCommands()
 
         CommandGroup(replacing: .appInfo) {
@@ -41,7 +43,11 @@ struct RouterCommands: Commands {
                     await viewModel.connectSelectedProfile()
                 }
             }
-            .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
+            .disabled(
+                viewModel.selectedProfile == nil ||
+                viewModel.isSelectedProfileConnected ||
+                viewModel.isBusy
+            )
             .keyboardShortcut("r", modifiers: [.command, .option])
 
             Button(localization.text("action.refresh")) {
