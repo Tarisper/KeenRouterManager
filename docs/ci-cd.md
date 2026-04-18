@@ -24,7 +24,7 @@ git push
 
 ### Вариант 2: С подписью кода (если нужна распространение)
 
-1. **Подготовьте сертификат** (следуйте инструкциям в [.github/CI-SETUP.md](.github/CI-SETUP.md))
+1. **Подготовьте сертификат** (следуйте инструкциям в [../.github/CI-SETUP.md](../.github/CI-SETUP.md))
 
 2. **Добавьте Secrets** в Settings → Secrets and variables → Actions:
    - `APPLE_CERTIFICATE_P12`
@@ -66,4 +66,4 @@ git push
 
 ## Дополнительно
 
-Подробнее см. в [.github/CI-SETUP.md](.github/CI-SETUP.md)
+Подробнее см. в [../.github/CI-SETUP.md](../.github/CI-SETUP.md)
