@@ -18,5 +18,8 @@ build/
 *.xcarchive
 dist/
 
+# Editor settings
+.vscode/
+
 # macOS
 .DS_Store
