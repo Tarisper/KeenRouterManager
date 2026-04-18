@@ -12,41 +12,28 @@ env:
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Select Xcode version
-      run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
-    
-    - name: Display Xcode version
-      run: xcodebuild -version
-    
-    - name: Build project
-      run: |
-        xcodebuild build \
-          -project KeenRouterManager.xcodeproj \
-          -scheme KeenRouterManager \
-          -configuration Release \
-          -derivedDataPath build
-    
-    - name: List build artifacts
-      run: ls -la build/Build/Products/Release/ || true
-      
-    - name: Archive for distribution (optional)
-      run: |
-        xcodebuild archive \
-          -project KeenRouterManager.xcodeproj \
-          -scheme KeenRouterManager \
-          -configuration Release \
-          -archivePath build/KeenRouterManager.xcarchive
-      continue-on-error: true
-    
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: build-artifacts
-        path: build/Build/Products/Release/
-        retention-days: 7
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display Xcode version
+        run: xcodebuild -version
+
+      - name: Build project without code signing
+        run: |
+          xcodebuild build \
+            -project KeenRouterManager.xcodeproj \
+            -scheme KeenRouterManager \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: build/Build/Products/Release/
+          retention-days: 7
