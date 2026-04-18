@@ -1,0 +1,76 @@
+name: Release KeenRouterManager
+
+# Срабатывает при создании tag (v1.0.0, v0.9.0 и т.д.)
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  release:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Select Xcode version
+      run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+    
+    - name: Display Xcode version
+      run: xcodebuild -version
+    
+    - name: Build and archive
+      run: |
+        xcodebuild archive \
+          -project KeenRouterManager.xcodeproj \
+          -scheme KeenRouterManager \
+          -configuration Release \
+          -archivePath build/KeenRouterManager.xcarchive
+    
+    - name: Export app
+      run: |
+        xcodebuild -exportArchive \
+          -archivePath build/KeenRouterManager.xcarchive \
+          -exportOptionsPlist ExportOptions.plist \
+          -exportPath build/Distribution
+    
+    - name: Create DMG (optional)
+      run: |
+        mkdir -p build/DMG
+        cp -r build/Distribution/KeenRouterManager.app build/DMG/
+        hdiutil create -volname "KeenRouterManager" \
+          -srcfolder build/DMG \
+          -ov -format UDZO build/KeenRouterManager.dmg
+      continue-on-error: true
+    
+    - name: Get tag version
+      id: tag
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Create Release and upload artifacts
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/Distribution/KeenRouterManager.app
+          build/KeenRouterManager.dmg
+        draft: false
+        prerelease: false
+        name: Release ${{ steps.tag.outputs.VERSION }}
+        body: |
+          KeenRouterManager ${{ steps.tag.outputs.VERSION }}
+          
+          ## Download
+          - **KeenRouterManager.app** - macOS application
+          - **KeenRouterManager.dmg** - Disk image for installation
+          
+          ### Installation
+          1. Download `KeenRouterManager.dmg`
+          2. Double-click to mount the disk image
+          3. Drag `KeenRouterManager.app` to Applications folder
+          4. Done! Launch from Applications or Spotlight
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
