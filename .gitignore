@@ -13,5 +13,10 @@ xcuserdata/
 .swiftpm/xcode/package.xcworkspace/xcuserdata/
 Package.resolved
 
+# Build artifacts
+build/
+*.xcarchive
+dist/
+
 # macOS
 .DS_Store
