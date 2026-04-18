@@ -35,7 +35,7 @@ jobs:
       run: |
         xcodebuild -exportArchive \
           -archivePath build/KeenRouterManager.xcarchive \
-          -exportOptionsPlist ExportOptions.plist \
+          -exportOptionsPlist ExportOptions-Release.plist \
           -exportPath build/Distribution
     
     - name: Create DMG (optional)
@@ -55,7 +55,6 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          build/Distribution/KeenRouterManager.app
           build/KeenRouterManager.dmg
         draft: false
         prerelease: false
@@ -64,7 +63,6 @@ jobs:
           KeenRouterManager ${{ steps.tag.outputs.VERSION }}
           
           ## Download
-          - **KeenRouterManager.app** - macOS application
           - **KeenRouterManager.dmg** - Disk image for installation
           
           ### Installation
