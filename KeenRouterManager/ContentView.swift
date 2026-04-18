@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 private enum LayoutMetrics {
     static let sidebarWidth: CGFloat = 280
     static let inspectorWidth: CGFloat = 320
-    static let splitViewChromeAllowance: CGFloat = 48
     static let statusColumnWidth: CGFloat = 60
     static let statusIndicatorSize: CGFloat = 8
     static let clientColumnIdealWidth: CGFloat = 180
@@ -14,31 +13,8 @@ private enum LayoutMetrics {
     static let segmentColumnMinimumWidth: CGFloat = 130
     static let connectionColumnWidth: CGFloat = 150
     static let policyColumnWidth: CGFloat = 150
-    static let minimumWindowWidthWithoutInspector: CGFloat =
-          1240
-//        sidebarWidth +
-//        statusColumnWidth +
-//        clientColumnMinimumWidth +
-//        ipColumnWidth +
-//        segmentColumnMinimumWidth +
-//        connectionColumnWidth +
-//        policyColumnWidth +
-//        splitViewChromeAllowance + 100
-    static let minimumWindowWidthWithInspector: CGFloat = 1240
+    static let minimumWindowWidth: CGFloat = 1240
     static let minimumWindowHeight: CGFloat = 760
-}
-
-/**
- * Convenience conversion between persisted sidebar state and split view visibility.
- */
-private extension NavigationSplitViewVisibility {
-    init(isRouterListVisible: Bool) {
-        self = isRouterListVisible ? .all : .detailOnly
-    }
-
-    var isRouterListVisible: Bool {
-        self != .detailOnly
-    }
 }
 
 private enum ClientStatusFilter: String, CaseIterable, Identifiable {
@@ -68,7 +44,8 @@ private enum ClientPolicyFilter: Equatable {
 }
 
 /**
- * Main application window with router sidebar, searchable client table, and inspector.
+ * Main application window with router sidebar, searchable client table,
+ * and a sheet-based client details panel.
  */
 struct ContentView: View {
     @EnvironmentObject private var localization: LocalizationManager
@@ -77,21 +54,14 @@ struct ContentView: View {
 
     @State private var editorPayload: RouterEditorPayload?
     @State private var isDeleteConfirmationShown = false
-    @State private var columnVisibility: NavigationSplitViewVisibility
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var searchText = ""
     @State private var statusFilter: ClientStatusFilter = .all
     @State private var sortMode: ClientSortMode = .smart
     @State private var policyFilter: ClientPolicyFilter = .all
     @State private var segmentFilter: String?
-    @SceneStorage("mainWindow.isInspectorPresented") private var isInspectorPresented = true
-
-    /**
-     * Creates the main screen with the last saved sidebar visibility.
-     */
-    init() {
-        let isRouterListVisible = FileAppSettingsStore.loadCurrent().isRouterListVisible
-        _columnVisibility = State(initialValue: NavigationSplitViewVisibility(isRouterListVisible: isRouterListVisible))
-    }
+    @State private var isConnectActionPending = false
+    @SceneStorage("mainWindow.isInspectorPresented") private var isInspectorPresented = false
 
     private var visibleClients: [RouterClient] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,6 +115,22 @@ struct ContentView: View {
             .map { $0 }
     }
 
+    /**
+     * Chooses the client shown in the details sheet.
+     *
+     * Priority:
+     * - selected client from the currently visible filtered list;
+     * - otherwise the first client from the current visible list.
+     */
+    private var effectiveInspectorClient: RouterClient? {
+        if let selectedClientID = viewModel.selectedClientID,
+           let selectedVisibleClient = visibleClients.first(where: { $0.id == selectedClientID }) {
+            return selectedVisibleClient
+        }
+
+        return visibleClients.first
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
@@ -157,16 +143,14 @@ struct ContentView: View {
             prompt: Text(localization.text("search.clients.prompt"))
         )
         .frame(
-            minWidth: isInspectorPresented
-                ? LayoutMetrics.minimumWindowWidthWithInspector
-                : LayoutMetrics.minimumWindowWidthWithoutInspector,
+            minWidth: LayoutMetrics.minimumWindowWidth,
             minHeight: LayoutMetrics.minimumWindowHeight
         )
         .searchSuggestions {
             ForEach(searchSuggestions, id: \.self) { suggestion in
                 Text(suggestion)
                     .searchCompletion(suggestion)
-                }
+            }
         }
         .toolbar {
             ToolbarItemGroup {
@@ -193,11 +177,14 @@ struct ContentView: View {
 
             ToolbarItemGroup {
                 Button(localization.text("action.connect")) {
-                    Task {
-                        await viewModel.connectSelectedProfile()
-                    }
+                    startConnectSelectedProfile()
                 }
-                .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
+                .disabled(
+                    viewModel.selectedProfile == nil ||
+                    viewModel.isSelectedProfileConnected ||
+                    viewModel.isBusy ||
+                    isConnectActionPending
+                )
 
                 Button(localization.text("action.refresh")) {
                     Task {
@@ -317,11 +304,11 @@ struct ContentView: View {
                 )
             }
         }
-        .inspector(isPresented: $isInspectorPresented) {
-            ClientInspectorView(client: viewModel.selectedClient)
+        .sheet(isPresented: $isInspectorPresented) {
+            ClientInspectorView(client: effectiveInspectorClient)
                 .environmentObject(localization)
                 .environmentObject(viewModel)
-                .inspectorColumnWidth(LayoutMetrics.inspectorWidth)
+                .frame(minWidth: LayoutMetrics.inspectorWidth, minHeight: 440)
         }
         .fileImporter(
             isPresented: $appUI.isImportingConfiguration,
@@ -387,12 +374,6 @@ struct ContentView: View {
         .task {
             viewModel.loadData()
         }
-        .onChange(of: columnVisibility) { _, newValue in
-            handleColumnVisibilityChange(newValue)
-        }
-        .onChange(of: viewModel.isRouterListVisible) { _, newValue in
-            restoreColumnVisibility(isRouterListVisible: newValue)
-        }
         .onChange(of: localization.language) { _, _ in
             viewModel.relocalizeVisibleTexts()
         }
@@ -435,11 +416,7 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(
-            min: LayoutMetrics.sidebarWidth,
-            ideal: LayoutMetrics.sidebarWidth,
-            max: LayoutMetrics.sidebarWidth
-        )
+        .navigationSplitViewColumnWidth(LayoutMetrics.sidebarWidth)
     }
 
     private var detail: some View {
@@ -459,11 +436,14 @@ struct ContentView: View {
                     )
 
                     Button(localization.text("action.connect")) {
-                        Task {
-                            await viewModel.connectSelectedProfile()
-                        }
+                        startConnectSelectedProfile()
                     }
-                    .disabled(viewModel.selectedProfile == nil || viewModel.isBusy)
+                    .disabled(
+                        viewModel.selectedProfile == nil ||
+                        viewModel.isSelectedProfileConnected ||
+                        viewModel.isBusy ||
+                        isConnectActionPending
+                    )
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -692,17 +672,18 @@ struct ContentView: View {
         viewModel.showOnlyMyDevices = false
     }
 
-    private func handleColumnVisibilityChange(_ newValue: NavigationSplitViewVisibility) {
-        let isRouterListVisible = newValue.isRouterListVisible
-        if viewModel.isRouterListVisible != isRouterListVisible {
-            viewModel.isRouterListVisible = isRouterListVisible
-        }
-    }
+    /**
+     * Blocks duplicate connect taps within the current render pass so every
+     * visible "Connect" trigger becomes disabled immediately.
+     */
+    private func startConnectSelectedProfile() {
+        guard !isConnectActionPending, !viewModel.isBusy else { return }
 
-    private func restoreColumnVisibility(isRouterListVisible: Bool) {
-        let targetVisibility = NavigationSplitViewVisibility(isRouterListVisible: isRouterListVisible)
-        guard columnVisibility != targetVisibility else { return }
-        columnVisibility = targetVisibility
+        isConnectActionPending = true
+        Task {
+            defer { isConnectActionPending = false }
+            await viewModel.connectSelectedProfile()
+        }
     }
 
     private func handleImport(_ result: Result<URL, Error>) {
@@ -781,6 +762,7 @@ private struct ClientPolicyMenu: View {
 }
 
 private struct ClientInspectorView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var localization: LocalizationManager
     @EnvironmentObject private var viewModel: MainViewModel
 
@@ -861,7 +843,18 @@ private struct ClientInspectorView: View {
                 )
             }
         }
-        .frame(minWidth: 280)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                Button(localization.text("action.close")) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .frame(minWidth: 320, idealWidth: 360, minHeight: 440, idealHeight: 540, alignment: .topLeading)
     }
 }
 
