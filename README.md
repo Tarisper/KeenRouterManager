@@ -1,6 +1,36 @@
-# KeenRouterManager
+<p align="center">
+  <picture>
+    <img src="docs/images/app-icon.png" alt="KeenRouterManager icon" width="128">
+  </picture>
+</p>
 
-Native macOS app for managing Keenetic and Netcraze router client profiles.
+<h1 align="center">KeenRouterManager</h1>
+
+<p align="center">
+  Native macOS app for managing Keenetic and Netcraze router client profiles.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Tarisper/KeenRouterManager/releases">
+    <img src="https://img.shields.io/github/v/release/Tarisper/KeenRouterManager?label=release&color=2ea44f" alt="Latest release">
+  </a>
+  <a href="https://github.com/Tarisper/KeenRouterManager/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License GPL-3.0">
+  </a>
+  <img src="https://img.shields.io/badge/platform-macOS%2015.5%2B-black" alt="Platform macOS 15.5+">
+  <img src="https://img.shields.io/badge/built%20with-SwiftUI-orange" alt="Built with SwiftUI">
+  <img src="https://img.shields.io/badge/status-active-success" alt="Project status active">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Tarisper/KeenRouterManager/releases">Download</a>
+  ·
+  <a href="https://github.com/Tarisper/KeenRouterManager/wiki">Wiki</a>
+  ·
+  <a href="https://github.com/Tarisper/KeenRouterManager/releases/latest">Latest Release</a>
+</p>
+
+![KeenRouterManager interface screenshot](docs/images/ingex.png)
 
 ## Features
 
