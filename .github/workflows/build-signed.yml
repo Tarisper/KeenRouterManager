@@ -1,0 +1,67 @@
+name: Build and Sign KeenRouterManager (with Code Signing)
+
+# Используйте этот workflow если нужна подпись кода для распространения
+# Для этого нужно настроить Secrets в GitHub
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  build-signed:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Apple Developer certificate
+      uses: apple-actions/import-codesign-certs@v2
+      with:
+        p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+        p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+    
+    - name: Download provisioning profile
+      uses: yukiarrr/ios-build-action@v1.6.0
+      with:
+        project-path: KeenRouterManager.xcodeproj
+        p8-base64: ${{ secrets.APPSTORE_API_KEY }}
+        provisioning-profile-base64: ${{ secrets.PROVISIONING_PROFILE }}
+      if: ${{ secrets.PROVISIONING_PROFILE != '' }}
+      continue-on-error: true
+    
+    - name: Display Xcode version
+      run: xcodebuild -version
+    
+    - name: Build and archive project (Signed)
+      run: |
+        xcodebuild archive \
+          -project KeenRouterManager.xcodeproj \
+          -scheme KeenRouterManager \
+          -configuration Release \
+          -archivePath build/KeenRouterManager.xcarchive \
+          -allowProvisioningUpdates
+      continue-on-error: true
+    
+    - name: Export archive for distribution
+      run: |
+        xcodebuild -exportArchive \
+          -archivePath build/KeenRouterManager.xcarchive \
+          -exportOptionsPlist ExportOptions.plist \
+          -exportPath build/Distribution
+      if: fileExists('ExportOptions.plist')
+      continue-on-error: true
+    
+    - name: Upload signed artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: signed-build-artifacts
+        path: build/Distribution/
+        retention-days: 30
+      if: always()

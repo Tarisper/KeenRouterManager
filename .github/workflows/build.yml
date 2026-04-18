@@ -1,0 +1,52 @@
+name: Build KeenRouterManager
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Select Xcode version
+      run: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+    
+    - name: Display Xcode version
+      run: xcodebuild -version
+    
+    - name: Build project
+      run: |
+        xcodebuild build \
+          -project KeenRouterManager.xcodeproj \
+          -scheme KeenRouterManager \
+          -configuration Release \
+          -derivedDataPath build
+    
+    - name: List build artifacts
+      run: ls -la build/Build/Products/Release/ || true
+      
+    - name: Archive for distribution (optional)
+      run: |
+        xcodebuild archive \
+          -project KeenRouterManager.xcodeproj \
+          -scheme KeenRouterManager \
+          -configuration Release \
+          -archivePath build/KeenRouterManager.xcarchive
+      continue-on-error: true
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: build-artifacts
+        path: build/Build/Products/Release/
+        retention-days: 7
