@@ -54,7 +54,6 @@ jobs:
           -archivePath build/KeenRouterManager.xcarchive \
           -exportOptionsPlist ExportOptions.plist \
           -exportPath build/Distribution
-      if: fileExists('ExportOptions.plist')
       continue-on-error: true
     
     - name: Upload signed artifacts
