@@ -25,7 +25,7 @@ jobs:
       with:
         p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
         p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+      continue-on-error: true
     
     - name: Download provisioning profile
       uses: yukiarrr/ios-build-action@v1.6.0
@@ -33,7 +33,6 @@ jobs:
         project-path: KeenRouterManager.xcodeproj
         p8-base64: ${{ secrets.APPSTORE_API_KEY }}
         provisioning-profile-base64: ${{ secrets.PROVISIONING_PROFILE }}
-      if: ${{ secrets.PROVISIONING_PROFILE != '' }}
       continue-on-error: true
     
     - name: Display Xcode version
