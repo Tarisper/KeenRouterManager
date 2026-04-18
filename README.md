@@ -35,10 +35,18 @@ Native macOS app for managing Keenetic and Netcraze router client profiles.
 - Security framework (`Keychain Services`) for password storage
 - SwiftUI `FileDocument` for configuration transfer
 
-## Requirements
+## Download
+
+Prebuilt application bundles are available in GitHub Releases.
+
+1. Open the Releases page of this repository.
+2. Download either `KeenRouterManager.dmg` or `KeenRouterManager.app.zip` from the latest release.
+3. Open the downloaded file and move `KeenRouterManager.app` to `Applications`.
+
+## Requirements for Building from Source
 
 - Xcode (full installation, not Command Line Tools only)
-- macOS 15.6 or newer (current app target deployment version)
+- macOS 15.5 or newer (current app target deployment version)
 
 ## Build and Run
 
