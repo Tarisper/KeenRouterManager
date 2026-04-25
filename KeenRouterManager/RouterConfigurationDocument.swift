@@ -2,37 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /**
- * Serialized application configuration archive for import/export.
- *
- * Passwords remain in the system Keychain and are intentionally excluded from
- * this transfer format. This keeps exports portable without writing secrets to
- * disk in plain text.
- */
-struct RouterConfigurationArchive: Codable {
-    static let currentFormatVersion = 1
-
-    var formatVersion: Int
-    var exportedAt: Date
-    var credentialsIncluded: Bool
-    var appSettings: AppSettings
-    var profiles: [RouterProfile]
-
-    init(
-        formatVersion: Int = currentFormatVersion,
-        exportedAt: Date = Date(),
-        credentialsIncluded: Bool = false,
-        appSettings: AppSettings = AppSettings(),
-        profiles: [RouterProfile] = []
-    ) {
-        self.formatVersion = formatVersion
-        self.exportedAt = exportedAt
-        self.credentialsIncluded = credentialsIncluded
-        self.appSettings = appSettings
-        self.profiles = profiles
-    }
-}
-
-/**
  * Errors produced while importing or exporting configuration archives.
  */
 enum RouterConfigurationTransferError: LocalizedError {
@@ -80,7 +49,10 @@ struct RouterConfigurationDocument: FileDocument {
      */
     static func decodeArchive(from data: Data) throws -> RouterConfigurationArchive {
         do {
-            let archive = try makeDecoder().decode(RouterConfigurationArchive.self, from: data)
+            let archiveDTO = try MainActor.assumeIsolated {
+                try makeDecoder().decode(RouterConfigurationArchiveDTO.self, from: data)
+            }
+            let archive = RouterConfigurationArchive(dto: archiveDTO)
             guard archive.formatVersion <= RouterConfigurationArchive.currentFormatVersion else {
                 throw RouterConfigurationTransferError.unsupportedFormatVersion(archive.formatVersion)
             }
@@ -101,7 +73,9 @@ struct RouterConfigurationDocument: FileDocument {
     static func encodeArchive(_ archive: RouterConfigurationArchive) throws -> Data {
         let encoder = JSONEncoder.pretty
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(archive)
+        return try MainActor.assumeIsolated {
+            try encoder.encode(archive.dto)
+        }
     }
 
     private static func makeDecoder() -> JSONDecoder {

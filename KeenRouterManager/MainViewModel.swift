@@ -88,8 +88,8 @@ final class MainViewModel: ObservableObject {
      * Creates the shared main model.
      * - Parameter localization: Localization service for all user-facing text.
      */
-    init(localization: LocalizationManager = .shared) {
-        self.localization = localization
+    init(localization: LocalizationManager? = nil) {
+        self.localization = localization ?? LocalizationManager.shared
         setStatus(.selectRouterAndConnect)
     }
 

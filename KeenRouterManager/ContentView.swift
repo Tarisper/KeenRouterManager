@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -159,6 +160,7 @@ struct ContentView: View {
                 } label: {
                     Label(localization.text("action.add"), systemImage: "plus")
                 }
+                .toolbarToolTip(localization.text("action.add"))
 
                 Button {
                     editorPayload = viewModel.makeEditorPayloadForSelected()
@@ -166,6 +168,7 @@ struct ContentView: View {
                     Label(localization.text("action.edit"), systemImage: "pencil")
                 }
                 .disabled(viewModel.selectedProfile == nil)
+                .toolbarToolTip(localization.text("action.edit"))
 
                 Button(role: .destructive) {
                     isDeleteConfirmationShown = true
@@ -173,6 +176,7 @@ struct ContentView: View {
                     Label(localization.text("action.delete"), systemImage: "trash")
                 }
                 .disabled(viewModel.selectedProfile == nil)
+                .toolbarToolTip(localization.text("action.delete"))
             }
 
             ToolbarItemGroup {
@@ -185,6 +189,7 @@ struct ContentView: View {
                     viewModel.isBusy ||
                     isConnectActionPending
                 )
+                .toolbarToolTip(localization.text("action.connect"))
 
                 Button(localization.text("action.refresh")) {
                     Task {
@@ -192,6 +197,7 @@ struct ContentView: View {
                     }
                 }
                 .disabled(!viewModel.isConnected || viewModel.isBusy)
+                .toolbarToolTip(localization.text("action.refresh"))
 
                 Button {
                     appUI.presentDiagnostics(for: viewModel.makeDiagnosticsPayloadForSelected())
@@ -199,12 +205,14 @@ struct ContentView: View {
                     Label(localization.text("action.diagnose"), systemImage: "stethoscope")
                 }
                 .disabled(viewModel.selectedProfile == nil)
+                .toolbarToolTip(localization.text("action.diagnose"))
 
                 Button {
                     appUI.presentDashboard()
                 } label: {
                     Label(localization.text("action.openDashboard"), systemImage: "rectangle.3.group.bubble.left")
                 }
+                .toolbarToolTip(localization.text("action.openDashboard"))
 
                 Menu {
                     Section(localization.text("filters.visibility")) {
@@ -280,6 +288,7 @@ struct ContentView: View {
                             : "line.3.horizontal.decrease.circle"
                     )
                 }
+                .toolbarToolTip(localization.text("filters.title"))
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -295,7 +304,7 @@ struct ContentView: View {
                         systemImage: "info.circle"
                     )
                 }
-                .help(
+                .toolbarToolTip(
                     localization.text(
                         isInspectorPresented
                             ? "action.hideInspector"
@@ -768,6 +777,14 @@ private struct ClientInspectorView: View {
 
     let client: RouterClient?
 
+    private var minimumHeight: CGFloat {
+        client == nil ? 320 : 440
+    }
+
+    private var idealHeight: CGFloat {
+        client == nil ? 380 : 540
+    }
+
     var body: some View {
         Group {
             if let client {
@@ -841,20 +858,32 @@ private struct ClientInspectorView: View {
                     systemImage: "info.circle",
                     description: Text(localization.text("inspector.emptySubtitle"))
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button(localization.text("action.close")) {
-                    dismiss()
+            VStack(spacing: 0) {
+                Divider()
+
+                HStack {
+                    Spacer()
+                    Button(localization.text("action.close")) {
+                        dismiss()
+                    }
+                    .keyboardShortcut(.cancelAction)
                 }
-                .keyboardShortcut(.cancelAction)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .background(.regularMaterial)
         }
-        .frame(minWidth: 320, idealWidth: 360, minHeight: 440, idealHeight: 540, alignment: .topLeading)
+        .frame(
+            minWidth: 320,
+            idealWidth: 360,
+            minHeight: minimumHeight,
+            idealHeight: idealHeight,
+            alignment: .topLeading
+        )
     }
 }
 
@@ -871,6 +900,36 @@ private extension Array where Element == String {
         }
 
         return result
+    }
+}
+
+private struct ToolbarToolTipBridge: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        view.isHidden = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            var currentView = nsView.superview
+            var remainingDepth = 5
+
+            while let view = currentView, remainingDepth > 0 {
+                view.toolTip = text
+                currentView = view.superview
+                remainingDepth -= 1
+            }
+        }
+    }
+}
+
+private extension View {
+    func toolbarToolTip(_ text: String) -> some View {
+        background(ToolbarToolTipBridge(text: text))
+            .help(text)
     }
 }
 
