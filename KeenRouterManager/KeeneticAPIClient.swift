@@ -891,7 +891,7 @@ final class KeeneticAPIClient {
         body: [String: Any]? = nil,
         extraHeaders: [String: String] = [:]
     ) async throws -> (Data, HTTPURLResponse) {
-        try await request(
+        let result = try await request(
             path: path,
             method: method,
             body: body,
@@ -899,6 +899,50 @@ final class KeeneticAPIClient {
             baseAddress: baseAddress,
             session: session
         )
+
+        let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard result.1.statusCode == 401, cleanPath != "auth" else {
+            return result
+        }
+
+        do {
+            try await refreshSessionOnCurrentEndpoint()
+        } catch {
+            return result
+        }
+
+        return try await request(
+            path: path,
+            method: method,
+            body: body,
+            extraHeaders: extraHeaders,
+            baseAddress: baseAddress,
+            session: session
+        )
+    }
+
+    private func refreshSessionOnCurrentEndpoint() async throws {
+        let previousCookie = sessionCookie
+        sessionCookie = nil
+
+        let delegate = InsecureRouterTLSDelegate(username: username, password: password)
+        let refreshedSession = URLSession(
+            configuration: Self.makeSessionConfiguration(),
+            delegate: delegate,
+            delegateQueue: nil
+        )
+
+        do {
+            let refreshedCookie = try await authenticate(baseAddress: baseAddress, session: refreshedSession)
+            session.invalidateAndCancel()
+            session = refreshedSession
+            sessionDelegate = delegate
+            sessionCookie = refreshedCookie
+        } catch {
+            sessionCookie = previousCookie
+            refreshedSession.invalidateAndCancel()
+            throw error
+        }
     }
 
     private func request(
@@ -940,7 +984,7 @@ final class KeeneticAPIClient {
             switch error.code {
             case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
                 throw RouterAPIError.transport(Self.localization.text("transport.tlsHandshakeFailed"))
-            case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost:
+            case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
                 throw RouterAPIError.transport(Self.localization.text("transport.couldNotConnect"))
             case .timedOut:
                 throw RouterAPIError.transport(Self.localization.text("transport.requestTimedOut"))

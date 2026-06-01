@@ -196,9 +196,9 @@
     "error.auth.initialStatus": "Ошибка авторизации на %@: статус %d. Проверьте схему (http/https), логин и пароль.",
     "error.auth.finalStatus": "Ошибка авторизации на %@: статус %d%@. Проверьте логин и пароль.",
 
-    "transport.tlsHandshakeFailed": "TLS handshake failed",
-    "transport.couldNotConnect": "Could not connect to the server.",
-    "transport.requestTimedOut": "The request timed out.",
+    "transport.tlsHandshakeFailed": "Не удалось установить защищённое соединение.",
+    "transport.couldNotConnect": "Не удалось подключиться к роутеру по выбранному сетевому пути.",
+    "transport.requestTimedOut": "Роутер не ответил за отведённое время.",
 
     "diagnostics.title": "Диагностика подключения",
     "diagnostics.running": "Проверяем подключение к %@…",
