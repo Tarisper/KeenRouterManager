@@ -8,6 +8,7 @@ import SwiftUI
  */
 struct SettingsView: View {
     @EnvironmentObject private var localization: LocalizationManager
+    @EnvironmentObject private var viewModel: MainViewModel
 
     var body: some View {
         Form {
@@ -24,9 +25,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Section(localization.text("settings.xkeen")) {
+                TextField(localization.text("settings.xkeen.sshPort"), text: $viewModel.xkeenSSHPort)
+                TextField(localization.text("settings.xkeen.path"), text: $viewModel.xkeenPath)
+
+                Text(localization.text("settings.xkeen.hint"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 210)
+        .frame(width: 520, height: 360)
         .scenePadding()
     }
 }
@@ -34,4 +45,5 @@ struct SettingsView: View {
 #Preview {
     SettingsView()
         .environmentObject(LocalizationManager.shared)
+        .environmentObject(MainViewModel())
 }

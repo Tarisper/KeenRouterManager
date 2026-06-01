@@ -61,6 +61,22 @@ final class MainViewModel: ObservableObject {
             }
         }
     }
+    @Published var xkeenSSHPort = "222" {
+        didSet {
+            guard xkeenSSHPort != oldValue else { return }
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
+    @Published var xkeenPath = "/opt/sbin/xkeen" {
+        didSet {
+            guard xkeenPath != oldValue else { return }
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
     @Published private(set) var clients: [RouterClient] = []
     @Published private(set) var policies: [RouterPolicy] = []
     @Published private(set) var isBusy = false
@@ -76,6 +92,7 @@ final class MainViewModel: ObservableObject {
     private let credentialsStore: CredentialsStore = KeychainCredentialsStore()
     private let settingsStore = FileAppSettingsStore()
     private let localMACAddressProvider = LocalMACAddressProvider()
+    private let xkeenSSHClient = XkeenSSHClient()
 
     private var apiClient: KeeneticAPIClient?
     private var connectedProfileID: UUID?
@@ -582,6 +599,71 @@ final class MainViewModel: ObservableObject {
         return title
     }
 
+    /**
+     * Builds SSH settings for Xkeen management from the selected router profile.
+     */
+    func makeXkeenSSHProfileForSelected() throws -> XkeenSSHProfile {
+        guard let profile = selectedProfile else {
+            throw LocalizedMessageError(message: localization.text("error.selectRouterFirst"))
+        }
+        guard let credentials = try credentialsStore.load(routerID: profile.id) else {
+            throw LocalizedMessageError(message: localization.text("error.passwordNotFound"))
+        }
+
+        let host = URLComponents(string: profile.address)?.host ?? profile.address
+        let trimmedPort = xkeenSSHPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUsername = profile.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitizedPassword = credentials.password.trimmingCharacters(in: .newlines)
+        let trimmedXkeenPath = xkeenPath.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let port = Int(trimmedPort), (1...65535).contains(port) else {
+            throw LocalizedMessageError(message: localization.text("error.ssh.invalidPort"))
+        }
+        guard !sanitizedPassword.isEmpty else {
+            throw LocalizedMessageError(message: localization.text("error.passwordNotFound"))
+        }
+
+        return XkeenSSHProfile(
+            host: host,
+            port: port,
+            username: trimmedUsername,
+            password: sanitizedPassword,
+            xkeenPath: trimmedXkeenPath.isEmpty ? "/opt/sbin/xkeen" : trimmedXkeenPath
+        )
+    }
+
+    /**
+     * Runs an allowlisted Xkeen command over SSH.
+     */
+    func runXkeenCommand(
+        _ command: XkeenCommand,
+        input: String? = nil,
+        onOutput: @escaping @Sendable (String) -> Void = { _ in }
+    ) async throws -> XkeenCommandResult {
+        let sshProfile = try makeXkeenSSHProfileForSelected()
+        return try await xkeenSSHClient.run(command, profile: sshProfile, input: input, onOutput: onOutput)
+    }
+
+    func listXkeenBackups() async throws -> [XkeenBackupItem] {
+        let sshProfile = try makeXkeenSSHProfileForSelected()
+        return try await xkeenSSHClient.listBackups(profile: sshProfile)
+    }
+
+    func deleteXkeenBackups(_ names: Set<String>) async throws -> XkeenCommandResult {
+        let sshProfile = try makeXkeenSSHProfileForSelected()
+        return try await xkeenSSHClient.deleteBackups(names, profile: sshProfile)
+    }
+
+    func downloadXkeenBackups(_ names: Set<String>, to destinationURL: URL) async throws -> XkeenCommandResult {
+        let sshProfile = try makeXkeenSSHProfileForSelected()
+        return try await xkeenSSHClient.downloadBackups(names, to: destinationURL, profile: sshProfile)
+    }
+
+    func uploadXrayConfigs(_ fileURLs: [URL]) async throws -> XkeenCommandResult {
+        let sshProfile = try makeXkeenSSHProfileForSelected()
+        return try await xkeenSSHClient.uploadXrayConfigs(fileURLs, profile: sshProfile)
+    }
+
     private func applyImportedConfiguration(_ archive: RouterConfigurationArchive) throws {
         profiles = mergeProfiles(existing: profiles, imported: archive.profiles)
         try profileStore.saveProfiles(profiles)
@@ -643,7 +725,9 @@ final class MainViewModel: ObservableObject {
         AppSettings(
             showOnlyMyDevices: showOnlyMyDevices,
             isRouterListVisible: isRouterListVisible,
-            interfaceLanguageCode: localization.language.rawValue
+            interfaceLanguageCode: localization.language.rawValue,
+            xkeenSSHPort: xkeenSSHPort,
+            xkeenPath: xkeenPath
         )
     }
 
@@ -653,6 +737,8 @@ final class MainViewModel: ObservableObject {
 
         showOnlyMyDevices = settings.showOnlyMyDevices
         isRouterListVisible = settings.isRouterListVisible
+        xkeenSSHPort = settings.xkeenSSHPort
+        xkeenPath = settings.xkeenPath
     }
 
     private func disconnect(withStatus status: StatusState) {
@@ -717,6 +803,8 @@ final class MainViewModel: ObservableObject {
             try settingsStore.update { settings in
                 settings.showOnlyMyDevices = showOnlyMyDevices
                 settings.isRouterListVisible = isRouterListVisible
+                settings.xkeenSSHPort = xkeenSSHPort
+                settings.xkeenPath = xkeenPath
             }
         } catch {
             present(error: error)

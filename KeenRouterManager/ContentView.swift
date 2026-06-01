@@ -62,6 +62,7 @@ struct ContentView: View {
     @State private var policyFilter: ClientPolicyFilter = .all
     @State private var segmentFilter: String?
     @State private var isConnectActionPending = false
+    @State private var xkeenSSHProfile: XkeenSSHProfile?
     @SceneStorage("mainWindow.isInspectorPresented") private var isInspectorPresented = false
 
     private var visibleClients: [RouterClient] {
@@ -214,6 +215,14 @@ struct ContentView: View {
                 }
                 .toolbarToolTip(localization.text("action.openDashboard"))
 
+                Button {
+                    presentXkeenControl()
+                } label: {
+                    Label(localization.text("action.xkeen"), systemImage: "terminal")
+                }
+                .disabled(viewModel.selectedProfile == nil)
+                .toolbarToolTip(localization.text("action.xkeen"))
+
                 Menu {
                     Section(localization.text("filters.visibility")) {
                         Toggle(localization.text("toggle.my"), isOn: $viewModel.showOnlyMyDevices)
@@ -362,6 +371,27 @@ struct ContentView: View {
             DashboardView()
                 .environmentObject(localization)
                 .environmentObject(viewModel)
+        }
+        .sheet(item: $xkeenSSHProfile) { profile in
+            XkeenControlView(
+                profile: profile,
+                runCommand: { command, input, onOutput in
+                    try await viewModel.runXkeenCommand(command, input: input, onOutput: onOutput)
+                },
+                listBackups: {
+                    try await viewModel.listXkeenBackups()
+                },
+                deleteBackups: { names in
+                    try await viewModel.deleteXkeenBackups(names)
+                },
+                downloadBackups: { names, destinationURL in
+                    try await viewModel.downloadXkeenBackups(names, to: destinationURL)
+                },
+                uploadConfigs: { fileURLs in
+                    try await viewModel.uploadXrayConfigs(fileURLs)
+                }
+            )
+            .environmentObject(localization)
         }
         .confirmationDialog(
             localization.text("dialog.deleteRouter.title"),
@@ -692,6 +722,14 @@ struct ContentView: View {
         Task {
             defer { isConnectActionPending = false }
             await viewModel.connectSelectedProfile()
+        }
+    }
+
+    private func presentXkeenControl() {
+        do {
+            xkeenSSHProfile = try viewModel.makeXkeenSSHProfileForSelected()
+        } catch {
+            viewModel.present(error: error)
         }
     }
 
