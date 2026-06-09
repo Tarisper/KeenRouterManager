@@ -67,6 +67,7 @@ struct KeenRouterManagerApp: App {
         Settings {
             SettingsView()
                 .environmentObject(localization)
+                .environmentObject(viewModel)
         }
         .windowResizability(.contentSize)
 

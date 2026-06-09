@@ -24,6 +24,8 @@ struct AppSettings: Codable {
         case showOnlyMyDevices
         case isRouterListVisible
         case interfaceLanguageCode
+        case xkeenSSHPort
+        case xkeenPath
     }
 
     /**
@@ -44,16 +46,30 @@ struct AppSettings: Codable {
     var interfaceLanguageCode: String? = nil
 
     /**
+     * SSH port used for Xkeen management.
+     */
+    var xkeenSSHPort: String = "222"
+
+    /**
+     * Absolute path to the Xkeen executable on the router.
+     */
+    var xkeenPath: String = "/opt/sbin/xkeen"
+
+    /**
      * Creates settings with explicit values.
      */
     init(
         showOnlyMyDevices: Bool = false,
         isRouterListVisible: Bool = true,
-        interfaceLanguageCode: String? = nil
+        interfaceLanguageCode: String? = nil,
+        xkeenSSHPort: String = "222",
+        xkeenPath: String = "/opt/sbin/xkeen"
     ) {
         self.showOnlyMyDevices = showOnlyMyDevices
         self.isRouterListVisible = isRouterListVisible
         self.interfaceLanguageCode = interfaceLanguageCode
+        self.xkeenSSHPort = xkeenSSHPort
+        self.xkeenPath = xkeenPath
     }
 
     /**
@@ -66,6 +82,8 @@ struct AppSettings: Codable {
         self.showOnlyMyDevices = try container.decodeIfPresent(Bool.self, forKey: .showOnlyMyDevices) ?? false
         self.isRouterListVisible = try container.decodeIfPresent(Bool.self, forKey: .isRouterListVisible) ?? true
         self.interfaceLanguageCode = try container.decodeIfPresent(String.self, forKey: .interfaceLanguageCode)
+        self.xkeenSSHPort = try container.decodeIfPresent(String.self, forKey: .xkeenSSHPort) ?? "222"
+        self.xkeenPath = try container.decodeIfPresent(String.self, forKey: .xkeenPath) ?? "/opt/sbin/xkeen"
     }
 }
 
