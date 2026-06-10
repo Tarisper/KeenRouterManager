@@ -133,6 +133,11 @@ struct ContentView: View {
         return visibleClients.first
     }
 
+    private var selectedActionClient: RouterClient? {
+        guard let selectedClientID = viewModel.selectedClientID else { return nil }
+        return visibleClients.first { $0.id == selectedClientID }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
@@ -300,7 +305,7 @@ struct ContentView: View {
                 .toolbarToolTip(localization.text("filters.title"))
             }
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     isInspectorPresented.toggle()
                 } label: {
@@ -318,8 +323,18 @@ struct ContentView: View {
                         isInspectorPresented
                             ? "action.hideInspector"
                             : "action.showInspector"
-                    )
+                        )
                 )
+
+                if selectedActionClient != nil {
+                    Button {
+                        wakeSelectedClient()
+                    } label: {
+                        Label(localization.text("action.wake"), systemImage: "power")
+                    }
+                    .disabled(!viewModel.isConnected || viewModel.isBusy)
+                    .toolbarToolTip(localization.text("action.wake"))
+                }
             }
         }
         .sheet(isPresented: $isInspectorPresented) {
@@ -518,12 +533,6 @@ struct ContentView: View {
 
                 Spacer()
 
-                if let lastRefreshDate = viewModel.lastRefreshDate {
-                    Text(localization.text("dashboard.lastRefresh.inline", args: [DateFormatter.inlineRefresh.string(from: lastRefreshDate)]))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
 
             Text(viewModel.statusMessage)
@@ -733,6 +742,14 @@ struct ContentView: View {
         }
     }
 
+    private func wakeSelectedClient() {
+        guard let client = selectedActionClient else { return }
+
+        Task {
+            await viewModel.wakeClient(client)
+        }
+    }
+
     private func handleImport(_ result: Result<URL, Error>) {
         switch result {
         case let .success(url):
@@ -833,11 +850,23 @@ private struct ClientInspectorView: View {
                         }
 
                         LabeledContent(localization.text("inspector.status")) {
-                            Label(
-                                client.isOnline ? localization.text("client.online") : localization.text("client.offline"),
-                                systemImage: client.isOnline ? "dot.radiowaves.left.and.right" : "slash.circle"
-                            )
-                            .foregroundStyle(client.isOnline ? Color.green : Color.secondary)
+                            HStack {
+                                Label(
+                                    client.isOnline ? localization.text("client.online") : localization.text("client.offline"),
+                                    systemImage: client.isOnline ? "dot.radiowaves.left.and.right" : "slash.circle"
+                                )
+                                .foregroundStyle(client.isOnline ? Color.green : Color.secondary)
+
+                                Button {
+                                    Task {
+                                        await viewModel.wakeClient(client)
+                                    }
+                                } label: {
+                                    Label(localization.text("action.wake"), systemImage: "power")
+                                }
+                                .disabled(client.isOnline || viewModel.isBusy)
+                                .help(localization.text("action.wake"))
+                            }
                         }
 
                         LabeledContent(localization.text("inspector.ip")) {

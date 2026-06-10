@@ -35,6 +35,7 @@ final class MainViewModel: ObservableObject {
         case refreshed(at: Date)
         case clientProfileUpdated(name: String)
         case clientBlocked(name: String)
+        case clientWakeSent(name: String)
         case configurationImported(count: Int)
         case configurationExported
     }
@@ -463,6 +464,27 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
+     * Sends a Wake-on-LAN packet to a router client.
+     * - Parameter client: Target router client.
+     */
+    func wakeClient(_ client: RouterClient) async {
+        guard let apiClient else {
+            present(errorMessage: localization.text("error.connectFirst"))
+            return
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            try await apiClient.wakeClient(mac: client.mac)
+            setStatus(.clientWakeSent(name: client.name))
+        } catch {
+            present(error: error)
+        }
+    }
+
+    /**
      * Runs a connection diagnostic without mutating the active router session.
      * - Parameter payload: Router address and credentials to validate.
      * - Returns: Diagnostic report with endpoint attempts and guidance.
@@ -791,6 +813,8 @@ final class MainViewModel: ObservableObject {
             return localization.text("status.clientProfileUpdated", args: [name])
         case let .clientBlocked(name):
             return localization.text("status.clientBlocked", args: [name])
+        case let .clientWakeSent(name):
+            return localization.text("status.clientWakeSent", args: [name])
         case let .configurationImported(count):
             return localization.text("status.configurationImported", args: [count])
         case .configurationExported:

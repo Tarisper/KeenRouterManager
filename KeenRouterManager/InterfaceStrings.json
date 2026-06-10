@@ -70,6 +70,7 @@
     "action.hideInspector": "Скрыть сведения",
     "action.changePolicy": "Сменить политику",
     "action.block": "Заблокировать",
+    "action.wake": "Разбудить",
     "action.save": "Сохранить",
     "action.cancel": "Отмена",
     "action.close": "Закрыть",
@@ -216,6 +217,7 @@
     "status.refreshed": "Обновлено: %@",
     "status.clientProfileUpdated": "Профиль клиента обновлён: %@.",
     "status.clientBlocked": "Клиент заблокирован: %@.",
+    "status.clientWakeSent": "Wake-on-LAN отправлен: %@.",
     "status.configurationImported": "Импортировано профилей: %d.",
     "status.configurationExported": "Конфигурация экспортирована.",
 
@@ -361,6 +363,7 @@
     "action.hideInspector": "Hide Details",
     "action.changePolicy": "Change Policy",
     "action.block": "Block",
+    "action.wake": "Wake",
     "action.save": "Save",
     "action.cancel": "Cancel",
     "action.close": "Close",
@@ -507,6 +510,7 @@
     "status.refreshed": "Refreshed: %@",
     "status.clientProfileUpdated": "Client profile updated: %@.",
     "status.clientBlocked": "Client blocked: %@.",
+    "status.clientWakeSent": "Wake-on-LAN sent: %@.",
     "status.configurationImported": "Imported profiles: %d.",
     "status.configurationExported": "Configuration exported.",
 
