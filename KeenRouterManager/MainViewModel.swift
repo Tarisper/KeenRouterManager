@@ -35,6 +35,7 @@ final class MainViewModel: ObservableObject {
         case refreshed(at: Date)
         case clientProfileUpdated(name: String)
         case clientBlocked(name: String)
+        case clientWakeSent(name: String)
         case configurationImported(count: Int)
         case configurationExported
     }
@@ -53,6 +54,7 @@ final class MainViewModel: ObservableObject {
             }
         }
     }
+    @Published private(set) var favoriteClientMACs: Set<String> = []
     @Published var isRouterListVisible = true {
         didSet {
             guard isRouterListVisible != oldValue else { return }
@@ -192,6 +194,13 @@ final class MainViewModel: ObservableObject {
      */
     var myClientCount: Int {
         clients.filter { localMACAddresses.contains($0.mac.lowercased()) }.count
+    }
+
+    /**
+     * Number of current router clients marked as favorites.
+     */
+    var favoriteClientCount: Int {
+        clients.filter { isFavorite($0) }.count
     }
 
     /**
@@ -463,6 +472,47 @@ final class MainViewModel: ObservableObject {
     }
 
     /**
+     * Sends a Wake-on-LAN packet to a router client.
+     * - Parameter client: Target router client.
+     */
+    func wakeClient(_ client: RouterClient) async {
+        guard let apiClient else {
+            present(errorMessage: localization.text("error.connectFirst"))
+            return
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            try await apiClient.wakeClient(mac: client.mac)
+            setStatus(.clientWakeSent(name: client.name))
+        } catch {
+            present(error: error)
+        }
+    }
+
+    /**
+     * Checks whether a router client is marked as favorite.
+     */
+    func isFavorite(_ client: RouterClient) -> Bool {
+        favoriteClientMACs.contains(client.mac.lowercased())
+    }
+
+    /**
+     * Toggles the persisted favorite flag for a router client.
+     */
+    func toggleFavorite(_ client: RouterClient) {
+        let mac = client.mac.lowercased()
+        if favoriteClientMACs.contains(mac) {
+            favoriteClientMACs.remove(mac)
+        } else {
+            favoriteClientMACs.insert(mac)
+        }
+        persistSettings()
+    }
+
+    /**
      * Runs a connection diagnostic without mutating the active router session.
      * - Parameter payload: Router address and credentials to validate.
      * - Returns: Diagnostic report with endpoint attempts and guidance.
@@ -724,6 +774,7 @@ final class MainViewModel: ObservableObject {
     private func currentSettingsSnapshot() -> AppSettings {
         AppSettings(
             showOnlyMyDevices: showOnlyMyDevices,
+            favoriteClientMACs: favoriteClientMACs,
             isRouterListVisible: isRouterListVisible,
             interfaceLanguageCode: localization.language.rawValue,
             xkeenSSHPort: xkeenSSHPort,
@@ -736,6 +787,7 @@ final class MainViewModel: ObservableObject {
         defer { isRestoringSettings = false }
 
         showOnlyMyDevices = settings.showOnlyMyDevices
+        favoriteClientMACs = settings.favoriteClientMACs
         isRouterListVisible = settings.isRouterListVisible
         xkeenSSHPort = settings.xkeenSSHPort
         xkeenPath = settings.xkeenPath
@@ -791,6 +843,8 @@ final class MainViewModel: ObservableObject {
             return localization.text("status.clientProfileUpdated", args: [name])
         case let .clientBlocked(name):
             return localization.text("status.clientBlocked", args: [name])
+        case let .clientWakeSent(name):
+            return localization.text("status.clientWakeSent", args: [name])
         case let .configurationImported(count):
             return localization.text("status.configurationImported", args: [count])
         case .configurationExported:
@@ -802,6 +856,7 @@ final class MainViewModel: ObservableObject {
         do {
             try settingsStore.update { settings in
                 settings.showOnlyMyDevices = showOnlyMyDevices
+                settings.favoriteClientMACs = favoriteClientMACs
                 settings.isRouterListVisible = isRouterListVisible
                 settings.xkeenSSHPort = xkeenSSHPort
                 settings.xkeenPath = xkeenPath

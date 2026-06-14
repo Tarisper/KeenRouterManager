@@ -5,10 +5,11 @@ import UniformTypeIdentifiers
 private enum LayoutMetrics {
     static let sidebarWidth: CGFloat = 280
     static let inspectorWidth: CGFloat = 320
-    static let statusColumnWidth: CGFloat = 60
+    static let statusColumnWidth: CGFloat = 55
+    static let favoriteColumnWidth: CGFloat = 54
     static let statusIndicatorSize: CGFloat = 8
-    static let clientColumnIdealWidth: CGFloat = 180
-    static let clientColumnMinimumWidth: CGFloat = 180
+    static let clientColumnIdealWidth: CGFloat = 160
+    static let clientColumnMinimumWidth: CGFloat = 160
     static let ipColumnWidth: CGFloat = 100
     static let segmentColumnIdealWidth: CGFloat = 130
     static let segmentColumnMinimumWidth: CGFloat = 130
@@ -57,6 +58,7 @@ struct ContentView: View {
     @State private var isDeleteConfirmationShown = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var searchText = ""
+    @State private var showOnlyFavorites = false
     @State private var statusFilter: ClientStatusFilter = .all
     @State private var sortMode: ClientSortMode = .smart
     @State private var policyFilter: ClientPolicyFilter = .all
@@ -65,10 +67,17 @@ struct ContentView: View {
     @State private var xkeenSSHProfile: XkeenSSHProfile?
     @SceneStorage("mainWindow.isInspectorPresented") private var isInspectorPresented = false
 
+    private var filterSourceClients: [RouterClient] {
+        if showOnlyFavorites {
+            return viewModel.clients.filter { viewModel.isFavorite($0) }
+        }
+        return viewModel.filteredClients
+    }
+
     private var visibleClients: [RouterClient] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return viewModel.filteredClients
+        return filterSourceClients
             .filter { client in
                 matchesSearch(client, query: query) &&
                     matchesStatusFilter(client) &&
@@ -79,7 +88,7 @@ struct ContentView: View {
     }
 
     private var availableSegments: [String] {
-        viewModel.filteredClients
+        filterSourceClients
             .map { viewModel.displaySegmentSummary(for: $0) }
             .filter { $0 != localization.text("common.notAvailable") }
             .uniqued()
@@ -88,6 +97,7 @@ struct ContentView: View {
 
     private var activeFilterCount: Int {
         var count = 0
+        if showOnlyFavorites { count += 1 }
         if viewModel.showOnlyMyDevices { count += 1 }
         if statusFilter != .all { count += 1 }
         if policyFilter != .all { count += 1 }
@@ -99,7 +109,7 @@ struct ContentView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
 
-        let pool = viewModel.filteredClients.flatMap { client in
+        let pool = filterSourceClients.flatMap { client in
             [
                 client.name,
                 client.ip,
@@ -131,6 +141,11 @@ struct ContentView: View {
         }
 
         return visibleClients.first
+    }
+
+    private var selectedActionClient: RouterClient? {
+        guard let selectedClientID = viewModel.selectedClientID else { return nil }
+        return visibleClients.first { $0.id == selectedClientID }
     }
 
     var body: some View {
@@ -225,11 +240,15 @@ struct ContentView: View {
 
                 Menu {
                     Section(localization.text("filters.visibility")) {
-                        Toggle(localization.text("toggle.my"), isOn: $viewModel.showOnlyMyDevices)
+                        Toggle(localization.text("toggle.favorites"), isOn: favoriteFilterBinding)
+                            .help(localization.text("toggle.favorites.help"))
+
+                        Toggle(localization.text("toggle.my"), isOn: myDevicesFilterBinding)
+                            .help(localization.text("toggle.my.help"))
                     }
 
                     Section(localization.text("filters.status")) {
-                        Picker(localization.text("filters.status"), selection: $statusFilter) {
+                        Picker(localization.text("filters.status"), selection: statusFilterBinding) {
                             Text(localization.text("filters.status.all")).tag(ClientStatusFilter.all)
                             Text(localization.text("filters.status.online")).tag(ClientStatusFilter.online)
                             Text(localization.text("filters.status.offline")).tag(ClientStatusFilter.offline)
@@ -239,13 +258,13 @@ struct ContentView: View {
 
                     Section(localization.text("filters.policy")) {
                         Button(localization.text("filters.policy.all")) {
-                            policyFilter = .all
+                            selectPolicyFilter(.all)
                         }
                         Button(localization.text("policy.default")) {
-                            policyFilter = .defaultPolicy
+                            selectPolicyFilter(.defaultPolicy)
                         }
                         Button(localization.text("policy.blocked")) {
-                            policyFilter = .blocked
+                            selectPolicyFilter(.blocked)
                         }
 
                         if !viewModel.policies.isEmpty {
@@ -254,25 +273,25 @@ struct ContentView: View {
 
                         ForEach(viewModel.policies) { policy in
                             Button(policy.displayName) {
-                                policyFilter = .policy(policy.id)
+                                selectPolicyFilter(.policy(policy.id))
                             }
                         }
                     }
 
                     Section(localization.text("filters.segment")) {
                         Button(localization.text("filters.segment.all")) {
-                            segmentFilter = nil
+                            selectSegmentFilter(nil)
                         }
 
                         ForEach(availableSegments, id: \.self) { segment in
                             Button(segment) {
-                                segmentFilter = segment
+                                selectSegmentFilter(segment)
                             }
                         }
                     }
 
                     Section(localization.text("filters.sort")) {
-                        Picker(localization.text("filters.sort"), selection: $sortMode) {
+                        Picker(localization.text("filters.sort"), selection: sortModeBinding) {
                             Text(localization.text("filters.sort.smart")).tag(ClientSortMode.smart)
                             Text(localization.text("filters.sort.name")).tag(ClientSortMode.name)
                             Text(localization.text("filters.sort.ip")).tag(ClientSortMode.ip)
@@ -300,7 +319,7 @@ struct ContentView: View {
                 .toolbarToolTip(localization.text("filters.title"))
             }
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     isInspectorPresented.toggle()
                 } label: {
@@ -318,8 +337,18 @@ struct ContentView: View {
                         isInspectorPresented
                             ? "action.hideInspector"
                             : "action.showInspector"
-                    )
+                        )
                 )
+
+                if selectedActionClient != nil {
+                    Button {
+                        wakeSelectedClient()
+                    } label: {
+                        Label(localization.text("action.wake"), systemImage: "power")
+                    }
+                    .disabled(!viewModel.isConnected || viewModel.isBusy)
+                    .toolbarToolTip(localization.text("action.wake"))
+                }
             }
         }
         .sheet(isPresented: $isInspectorPresented) {
@@ -415,6 +444,11 @@ struct ContentView: View {
         }
         .onChange(of: localization.language) { _, _ in
             viewModel.relocalizeVisibleTexts()
+        }
+        .onChange(of: searchText) { _, newValue in
+            if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                showOnlyFavorites = false
+            }
         }
     }
 
@@ -518,12 +552,6 @@ struct ContentView: View {
 
                 Spacer()
 
-                if let lastRefreshDate = viewModel.lastRefreshDate {
-                    Text(localization.text("dashboard.lastRefresh.inline", args: [DateFormatter.inlineRefresh.string(from: lastRefreshDate)]))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
 
             Text(viewModel.statusMessage)
@@ -554,6 +582,14 @@ struct ContentView: View {
                     .help(client.isOnline ? localization.text("client.online") : localization.text("client.offline"))
             }
             .width(LayoutMetrics.statusColumnWidth)
+
+            TableColumn(localization.text("table.favorite")) { client in
+                FavoriteButton(client: client)
+                    .environmentObject(localization)
+                    .environmentObject(viewModel)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .width(LayoutMetrics.favoriteColumnWidth)
 
             TableColumn(localization.text("table.client")) { client in
                 VStack(alignment: .leading, spacing: 2) {
@@ -612,6 +648,12 @@ struct ContentView: View {
                     systemImage: "desktopcomputer",
                     description: Text(localization.text("empty.noClients.subtitle"))
                 )
+            } else if showOnlyFavorites && viewModel.favoriteClientCount == 0 && activeFilterCount == 1 && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView(
+                    localization.text("empty.noFavoriteClients.title"),
+                    systemImage: "star",
+                    description: Text(localization.text("empty.noFavoriteClients.subtitle"))
+                )
             } else if viewModel.isMineFilterActiveWithoutMatches && activeFilterCount == 1 && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView(
                     localization.text("empty.noMineClients.title"),
@@ -634,6 +676,48 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var favoriteFilterBinding: Binding<Bool> {
+        Binding(
+            get: { showOnlyFavorites },
+            set: { isEnabled in
+                if isEnabled {
+                    selectFavoritesFilter()
+                } else {
+                    showOnlyFavorites = false
+                }
+            }
+        )
+    }
+
+    private var myDevicesFilterBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.showOnlyMyDevices },
+            set: { isEnabled in
+                if isEnabled {
+                    clearFavoritesFilter()
+                }
+                viewModel.showOnlyMyDevices = isEnabled
+            }
+        )
+    }
+
+    private var statusFilterBinding: Binding<ClientStatusFilter> {
+        Binding(
+            get: { statusFilter },
+            set: { selectStatusFilter($0) }
+        )
+    }
+
+    private var sortModeBinding: Binding<ClientSortMode> {
+        Binding(
+            get: { sortMode },
+            set: { newValue in
+                clearFavoritesFilter()
+                sortMode = newValue
+            }
+        )
     }
 
     private func matchesSearch(_ client: RouterClient, query: String) -> Bool {
@@ -702,8 +786,38 @@ struct ContentView: View {
         }
     }
 
+    private func selectFavoritesFilter() {
+        showOnlyFavorites = true
+        searchText = ""
+        statusFilter = .all
+        sortMode = .smart
+        policyFilter = .all
+        segmentFilter = nil
+        viewModel.showOnlyMyDevices = false
+    }
+
+    private func clearFavoritesFilter() {
+        showOnlyFavorites = false
+    }
+
+    private func selectStatusFilter(_ newValue: ClientStatusFilter) {
+        clearFavoritesFilter()
+        statusFilter = newValue
+    }
+
+    private func selectPolicyFilter(_ newValue: ClientPolicyFilter) {
+        clearFavoritesFilter()
+        policyFilter = newValue
+    }
+
+    private func selectSegmentFilter(_ newValue: String?) {
+        clearFavoritesFilter()
+        segmentFilter = newValue
+    }
+
     private func resetFilters() {
         searchText = ""
+        showOnlyFavorites = false
         statusFilter = .all
         sortMode = .smart
         policyFilter = .all
@@ -730,6 +844,14 @@ struct ContentView: View {
             xkeenSSHProfile = try viewModel.makeXkeenSSHProfileForSelected()
         } catch {
             viewModel.present(error: error)
+        }
+    }
+
+    private func wakeSelectedClient() {
+        guard let client = selectedActionClient else { return }
+
+        Task {
+            await viewModel.wakeClient(client)
         }
     }
 
@@ -808,6 +930,41 @@ private struct ClientPolicyMenu: View {
     }
 }
 
+private struct FavoriteButton: View {
+    @EnvironmentObject private var localization: LocalizationManager
+    @EnvironmentObject private var viewModel: MainViewModel
+
+    let client: RouterClient
+
+    private var isFavorite: Bool {
+        viewModel.isFavorite(client)
+    }
+
+    var body: some View {
+        Button {
+            viewModel.toggleFavorite(client)
+        } label: {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .foregroundStyle(isFavorite ? Color.yellow : Color.secondary)
+                .accessibilityLabel(
+                    localization.text(
+                        isFavorite
+                            ? "action.removeFromFavorites"
+                            : "action.addToFavorites"
+                    )
+                )
+        }
+        .buttonStyle(.borderless)
+        .help(
+            localization.text(
+                isFavorite
+                    ? "action.removeFromFavorites"
+                    : "action.addToFavorites"
+            )
+        )
+    }
+}
+
 private struct ClientInspectorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var localization: LocalizationManager
@@ -829,15 +986,33 @@ private struct ClientInspectorView: View {
                 Form {
                     Section(localization.text("inspector.overview")) {
                         LabeledContent(localization.text("inspector.name")) {
-                            Text(client.name)
+                            HStack {
+                                Text(client.name)
+
+                                Spacer()
+
+                                FavoriteButton(client: client)
+                            }
                         }
 
                         LabeledContent(localization.text("inspector.status")) {
-                            Label(
-                                client.isOnline ? localization.text("client.online") : localization.text("client.offline"),
-                                systemImage: client.isOnline ? "dot.radiowaves.left.and.right" : "slash.circle"
-                            )
-                            .foregroundStyle(client.isOnline ? Color.green : Color.secondary)
+                            HStack {
+                                Label(
+                                    client.isOnline ? localization.text("client.online") : localization.text("client.offline"),
+                                    systemImage: client.isOnline ? "dot.radiowaves.left.and.right" : "slash.circle"
+                                )
+                                .foregroundStyle(client.isOnline ? Color.green : Color.secondary)
+
+                                Button {
+                                    Task {
+                                        await viewModel.wakeClient(client)
+                                    }
+                                } label: {
+                                    Label(localization.text("action.wake"), systemImage: "power")
+                                }
+                                .disabled(client.isOnline || viewModel.isBusy)
+                                .help(localization.text("action.wake"))
+                            }
                         }
 
                         LabeledContent(localization.text("inspector.ip")) {

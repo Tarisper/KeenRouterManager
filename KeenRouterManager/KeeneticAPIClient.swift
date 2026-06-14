@@ -368,7 +368,7 @@ final class KeeneticAPIClient {
             for row in rows {
                 let mac = Self.stringValue(row["mac"], fallback: "").lowercased()
                 guard !mac.isEmpty else { continue }
-                let ip = Self.stringValue(row["ip"], fallback: Self.localization.text("common.notAvailable"))
+                let ip = Self.clientIPAddress(row["ip"])
                 let isOnline = Self.inferOnline(from: row, fallbackIP: ip)
                 let details = Self.extractClientDetails(from: row)
 
@@ -466,6 +466,22 @@ final class KeeneticAPIClient {
         let (_, response) = try await request(path: "rci/ip/hotspot/host", method: "POST", body: payload)
         guard response.statusCode == 200 else {
             throw RouterAPIError.server(statusCode: response.statusCode, path: "rci/ip/hotspot/host")
+        }
+    }
+
+    /**
+     * Sends a Wake-on-LAN packet to a known hotspot client.
+     * - Parameter mac: Client MAC address.
+     * - Throws: `RouterAPIError` when the API response is not successful.
+     */
+    func wakeClient(mac: String) async throws {
+        let payload: [String: Any] = [
+            "mac": mac,
+        ]
+
+        let (_, response) = try await request(path: "rci/ip/hotspot/wake", method: "POST", body: payload)
+        guard response.statusCode == 200 else {
+            throw RouterAPIError.server(statusCode: response.statusCode, path: "rci/ip/hotspot/wake")
         }
     }
 
@@ -1043,15 +1059,21 @@ final class KeeneticAPIClient {
         return nil
     }
 
+    private static func clientIPAddress(_ value: Any?) -> String {
+        let ip = stringValue(value, fallback: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if ip.isEmpty || ip == "0.0.0.0" {
+            return localization.text("common.notAvailable")
+        }
+        return ip
+    }
+
     private static func inferOnline(from row: [String: Any], fallbackIP: String) -> Bool {
         if let online = row["online"] as? Bool {
             return online
         }
 
         if let active = row["active"] as? Bool {
-            if active {
-                return true
-            }
+            return active
         }
 
         let link = stringValue(row["link"], fallback: "").lowercased()

@@ -22,6 +22,7 @@ enum AppSettingsStoreError: LocalizedError {
 struct AppSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case showOnlyMyDevices
+        case favoriteClientMACs
         case isRouterListVisible
         case interfaceLanguageCode
         case xkeenSSHPort
@@ -32,6 +33,11 @@ struct AppSettings: Codable {
      * Show only devices that match local MAC addresses of this Mac.
      */
     var showOnlyMyDevices: Bool = false
+
+    /**
+     * MAC addresses of clients marked as favorites.
+     */
+    var favoriteClientMACs: Set<String> = []
 
     /**
      * Whether the router list sidebar is visible.
@@ -60,12 +66,14 @@ struct AppSettings: Codable {
      */
     init(
         showOnlyMyDevices: Bool = false,
+        favoriteClientMACs: Set<String> = [],
         isRouterListVisible: Bool = true,
         interfaceLanguageCode: String? = nil,
         xkeenSSHPort: String = "222",
         xkeenPath: String = "/opt/sbin/xkeen"
     ) {
         self.showOnlyMyDevices = showOnlyMyDevices
+        self.favoriteClientMACs = Self.normalizedMACs(favoriteClientMACs)
         self.isRouterListVisible = isRouterListVisible
         self.interfaceLanguageCode = interfaceLanguageCode
         self.xkeenSSHPort = xkeenSSHPort
@@ -80,10 +88,17 @@ struct AppSettings: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.showOnlyMyDevices = try container.decodeIfPresent(Bool.self, forKey: .showOnlyMyDevices) ?? false
+        self.favoriteClientMACs = Self.normalizedMACs(
+            try container.decodeIfPresent(Set<String>.self, forKey: .favoriteClientMACs) ?? []
+        )
         self.isRouterListVisible = try container.decodeIfPresent(Bool.self, forKey: .isRouterListVisible) ?? true
         self.interfaceLanguageCode = try container.decodeIfPresent(String.self, forKey: .interfaceLanguageCode)
         self.xkeenSSHPort = try container.decodeIfPresent(String.self, forKey: .xkeenSSHPort) ?? "222"
         self.xkeenPath = try container.decodeIfPresent(String.self, forKey: .xkeenPath) ?? "/opt/sbin/xkeen"
+    }
+
+    private static func normalizedMACs(_ macs: Set<String>) -> Set<String> {
+        Set(macs.map { $0.lowercased() })
     }
 }
 
