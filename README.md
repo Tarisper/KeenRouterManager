@@ -38,10 +38,11 @@
 - Stores router passwords in the macOS Keychain.
 - Stores UI settings locally in JSON.
 - Searches router clients by name, IP, MAC, policy, and segment.
-- Filters router clients by online status, blocking state, policy, segment, and `My Devices`.
+- Filters router clients by favorites, online status, blocking state, policy, segment, and `My Devices`.
 - Sorts router clients by smart order, name, IP, policy, or segment.
 - Displays router clients in a native macOS table with a details sheet.
 - Client sorting: online devices first, then by name.
+- Favorite clients: mark devices with a star and show only favorites from the filter menu.
 - Assigns access policies to clients.
 - One-click internet blocking for a selected client.
 - `My Devices` filter: shows only clients whose MAC addresses match local MAC addresses on this Mac.
@@ -122,8 +123,8 @@ The project currently requires a full Xcode installation. `xcodebuild` is not av
 ## Project Structure
 
 - `KeenRouterManager/KeenRouterManagerApp.swift` - app entry point and scene wiring.
-- `KeenRouterManager/ContentView.swift` - main router browser window with sidebar, search, filters, table, and client details sheet.
-- `KeenRouterManager/MainViewModel.swift` - business logic and UI state.
+- `KeenRouterManager/ContentView.swift` - main router browser window with sidebar, search, filters, favorites, table, and client details sheet.
+- `KeenRouterManager/MainViewModel.swift` - business logic, favorite clients, and UI state.
 - `KeenRouterManager/KeeneticAPIClient.swift` - Keenetic HTTP API client.
 - `KeenRouterManager/Models.swift` - domain models.
 - `KeenRouterManager/XkeenModels.swift` - Xkeen commands, SSH profile, results, backup item, and user-facing errors.
@@ -154,7 +155,7 @@ The project currently requires a full Xcode installation. `xcodebuild` is not av
 By default, files are stored in `~/Library/Application Support/KeenRouterManager/`:
 
 - `routers.json` - router profiles
-- `settings.json` - UI settings (for example, `My Devices` filter state, selected interface language, router list visibility, Xkeen SSH port, and Xkeen executable path)
+- `settings.json` - UI settings (for example, `My Devices` filter state, favorite client MAC addresses, selected interface language, router list visibility, Xkeen SSH port, and Xkeen executable path)
 
 Router passwords are stored in the system Keychain.
 

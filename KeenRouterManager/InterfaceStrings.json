@@ -71,6 +71,8 @@
     "action.changePolicy": "Сменить политику",
     "action.block": "Заблокировать",
     "action.wake": "Разбудить",
+    "action.addToFavorites": "Добавить в избранное",
+    "action.removeFromFavorites": "Удалить из избранного",
     "action.save": "Сохранить",
     "action.cancel": "Отмена",
     "action.close": "Закрыть",
@@ -84,6 +86,8 @@
 
     "toggle.my": "Мои",
     "toggle.my.help": "Показывать только клиентов с MAC-адресами локальных сетевых интерфейсов этого Mac.",
+    "toggle.favorites": "Избранные",
+    "toggle.favorites.help": "Показывать только клиентов, добавленных в избранное.",
 
     "search.clients.prompt": "Поиск по имени, IP, MAC, политике или сегменту",
 
@@ -109,6 +113,7 @@
     "filters.resultsCount": "Показано клиентов: %d",
 
     "table.status": "Статус",
+    "table.favorite": "Избранное",
     "table.client": "Клиент",
     "table.ip": "IP",
     "table.segment": "Сегмент",
@@ -136,8 +141,10 @@
     "inspector.emptySubtitle": "Выберите устройство в таблице, чтобы увидеть его подробности и быстрые действия.",
 
     "empty.noClients.title": "Нет клиентов",
+    "empty.noFavoriteClients.title": "Нет избранных клиентов",
     "empty.noMineClients.title": "Нет моих клиентов",
     "empty.noClients.subtitle": "Подключитесь к роутеру, чтобы загрузить клиентов.",
+    "empty.noFavoriteClients.subtitle": "Отметьте клиентов звездочкой, чтобы быстро находить их через фильтр.",
     "empty.noMineClients.subtitle": "Снимите флажок «Мои», чтобы увидеть всех клиентов роутера.",
     "empty.noRouterSelected.title": "Роутер не выбран",
     "empty.noRouterSelected.subtitle": "Выберите профиль роутера в боковой панели или создайте новый.",
@@ -364,6 +371,8 @@
     "action.changePolicy": "Change Policy",
     "action.block": "Block",
     "action.wake": "Wake",
+    "action.addToFavorites": "Add to Favorites",
+    "action.removeFromFavorites": "Remove from Favorites",
     "action.save": "Save",
     "action.cancel": "Cancel",
     "action.close": "Close",
@@ -377,6 +386,8 @@
 
     "toggle.my": "Mine",
     "toggle.my.help": "Show only clients whose MAC addresses match local network interfaces of this Mac.",
+    "toggle.favorites": "Favorites",
+    "toggle.favorites.help": "Show only clients added to favorites.",
 
     "search.clients.prompt": "Search by name, IP, MAC, policy, or segment",
 
@@ -402,6 +413,7 @@
     "filters.resultsCount": "Clients shown: %d",
 
     "table.status": "Status",
+    "table.favorite": "Favorite",
     "table.client": "Client",
     "table.ip": "IP",
     "table.segment": "Segment",
@@ -429,8 +441,10 @@
     "inspector.emptySubtitle": "Select a device in the table to view details and quick actions.",
 
     "empty.noClients.title": "No clients",
+    "empty.noFavoriteClients.title": "No favorite clients",
     "empty.noMineClients.title": "No my devices",
     "empty.noClients.subtitle": "Connect to a router to load clients.",
+    "empty.noFavoriteClients.subtitle": "Mark clients with a star to find them quickly through the filter.",
     "empty.noMineClients.subtitle": "Turn off the “Mine” checkbox to see all router clients.",
     "empty.noRouterSelected.title": "No router selected",
     "empty.noRouterSelected.subtitle": "Choose a router profile in the sidebar or create a new one.",
