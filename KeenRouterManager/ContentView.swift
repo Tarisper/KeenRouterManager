@@ -5,11 +5,11 @@ import UniformTypeIdentifiers
 private enum LayoutMetrics {
     static let sidebarWidth: CGFloat = 280
     static let inspectorWidth: CGFloat = 320
-    static let statusColumnWidth: CGFloat = 60
-    static let favoriteColumnWidth: CGFloat = 44
+    static let statusColumnWidth: CGFloat = 55
+    static let favoriteColumnWidth: CGFloat = 54
     static let statusIndicatorSize: CGFloat = 8
-    static let clientColumnIdealWidth: CGFloat = 180
-    static let clientColumnMinimumWidth: CGFloat = 180
+    static let clientColumnIdealWidth: CGFloat = 160
+    static let clientColumnMinimumWidth: CGFloat = 160
     static let ipColumnWidth: CGFloat = 100
     static let segmentColumnIdealWidth: CGFloat = 130
     static let segmentColumnMinimumWidth: CGFloat = 130
