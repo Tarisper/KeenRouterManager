@@ -24,9 +24,9 @@ struct XkeenControlView: View {
     @State private var isGeoAutoUpdateConfigurationPresented = false
     @State private var xrayReleaseChoices: [XrayReleaseChoice] = []
     @State private var selectedXrayReleaseNumber: Int?
-    @State private var geoAutoUpdateDay = 8
-    @State private var geoAutoUpdateHour = 4
-    @State private var geoAutoUpdateMinute = 30
+    @State private var geoAutoUpdateDay = defaultGeoAutoUpdateDay
+    @State private var geoAutoUpdateHour = defaultGeoAutoUpdateHour
+    @State private var geoAutoUpdateMinute = defaultGeoAutoUpdateMinute
 
     private var areActionControlsDisabled: Bool {
         isRunning || isLoadingBackups
@@ -159,7 +159,7 @@ struct XkeenControlView: View {
                     isGeoAutoUpdateConfigurationPresented = false
                     run(
                         .configureGeoAutoUpdate,
-                        input: "1\n\(geoAutoUpdateDay)\n\(geoAutoUpdateHour)\n\(geoAutoUpdateMinute)\n"
+                        input: configureGeoAutoUpdateInput
                     )
                 }
             )
@@ -481,7 +481,7 @@ private struct XkeenGeoAutoUpdateConfigurationView: View {
     let cancel: () -> Void
     let apply: () -> Void
 
-    private let days = Array(1...8)
+    private let days: [GeoAutoUpdateDay] = GeoAutoUpdateDay.allCases
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -498,8 +498,8 @@ private struct XkeenGeoAutoUpdateConfigurationView: View {
                         .foregroundStyle(.secondary)
                     Picker(localization.text("xkeen.geoAutoUpdate.day"), selection: $selectedDay) {
                         ForEach(days, id: \.self) { day in
-                            Text(localization.text("xkeen.geoAutoUpdate.day.\(day)"))
-                                .tag(day)
+                            Text(localization.text("xkeen.geoAutoUpdate.day.\(day.rawValue)"))
+                                .tag(day.rawValue)
                         }
                     }
                     .labelsHidden()
@@ -538,4 +538,34 @@ private struct XkeenGeoAutoUpdateConfigurationView: View {
         .padding(20)
         .frame(width: 480)
     }
+}
+
+private enum GeoAutoUpdateDay: Int, CaseIterable, Identifiable {
+    case monday = 1
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+    case daily = 8
+
+    var id: Int { rawValue }
+}
+
+// MARK: - Default values
+
+private let defaultGeoAutoUpdateDay = GeoAutoUpdateDay.daily.rawValue
+private let defaultGeoAutoUpdateHour = 4
+private let defaultGeoAutoUpdateMinute = 30
+
+// MARK: - XkeenControlView helpers
+
+private extension XkeenControlView {
+    var configureGeoAutoUpdateInput: String {
+        "\(Self.configureGeoAutoUpdateMenuChoice)\n\(geoAutoUpdateDay)\n\(geoAutoUpdateHour)\n\(geoAutoUpdateMinute)\n"
+    }
+
+    /// First menu choice in xkeen's interactive prompt to enable/configure geo auto-update.
+    private static let configureGeoAutoUpdateMenuChoice = 1
 }
