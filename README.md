@@ -107,6 +107,18 @@ Prebuilt application bundles are available in GitHub Releases.
 2. Download either `KeenRouterManager.dmg` or `KeenRouterManager.app.zip` from the latest release.
 3. Open the downloaded file and move `KeenRouterManager.app` to `Applications`.
 
+GitHub builds are not notarized. If macOS blocks the downloaded app, allow this app explicitly:
+
+```bash
+APP="/Applications/KeenRouterManager.app"
+
+sudo xattr -dr com.apple.quarantine "$APP"
+sudo spctl --add --label "KeenRouterManager" "$APP"
+sudo spctl --enable --label "KeenRouterManager"
+```
+
+If you download a new build, repeat the `xattr` command for the new `.app` bundle.
+
 ## Requirements for Building from Source
 
 - Xcode (full installation, not Command Line Tools only)
