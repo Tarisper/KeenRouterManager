@@ -21,8 +21,12 @@ struct XkeenControlView: View {
     @State private var isLoadingBackups = false
     @State private var isDeleteBackupConfirmationShown = false
     @State private var isXrayReleaseSelectionPresented = false
+    @State private var isGeoAutoUpdateConfigurationPresented = false
     @State private var xrayReleaseChoices: [XrayReleaseChoice] = []
     @State private var selectedXrayReleaseNumber: Int?
+    @State private var geoAutoUpdateDay = defaultGeoAutoUpdateDay
+    @State private var geoAutoUpdateHour = defaultGeoAutoUpdateHour
+    @State private var geoAutoUpdateMinute = defaultGeoAutoUpdateMinute
 
     private var areActionControlsDisabled: Bool {
         isRunning || isLoadingBackups
@@ -58,6 +62,21 @@ struct XkeenControlView: View {
                     .updateXray,
                     .updateXkeen
                 ])
+                HStack(spacing: 8) {
+                    Button {
+                        isGeoAutoUpdateConfigurationPresented = true
+                    } label: {
+                        Label(
+                            localization.text("xkeen.command.configureGeoAutoUpdate"),
+                            systemImage: XkeenCommand.configureGeoAutoUpdate.systemImage
+                        )
+                    }
+                    .controlSize(.small)
+                    .help(localization.text("xkeen.command.configureGeoAutoUpdate"))
+                    .disabled(areActionControlsDisabled)
+
+                    commandButton(.disableGeoAutoUpdate)
+                }
                 commandGroup([
                     .backupXkeen,
                     .backupConfig,
@@ -124,6 +143,24 @@ struct XkeenControlView: View {
                 install: { choice in
                     isXrayReleaseSelectionPresented = false
                     run(.updateXray, input: "\(choice.number)\n")
+                }
+            )
+            .environmentObject(localization)
+        }
+        .sheet(isPresented: $isGeoAutoUpdateConfigurationPresented) {
+            XkeenGeoAutoUpdateConfigurationView(
+                selectedDay: $geoAutoUpdateDay,
+                hour: $geoAutoUpdateHour,
+                minute: $geoAutoUpdateMinute,
+                cancel: {
+                    isGeoAutoUpdateConfigurationPresented = false
+                },
+                apply: {
+                    isGeoAutoUpdateConfigurationPresented = false
+                    run(
+                        .configureGeoAutoUpdate,
+                        input: configureGeoAutoUpdateInput
+                    )
                 }
             )
             .environmentObject(localization)
@@ -432,4 +469,103 @@ struct XkeenControlView: View {
             }
         }
     }
+}
+
+private struct XkeenGeoAutoUpdateConfigurationView: View {
+    @EnvironmentObject private var localization: LocalizationManager
+
+    @Binding var selectedDay: Int
+    @Binding var hour: Int
+    @Binding var minute: Int
+
+    let cancel: () -> Void
+    let apply: () -> Void
+
+    private let days: [GeoAutoUpdateDay] = GeoAutoUpdateDay.allCases
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(localization.text("xkeen.geoAutoUpdate.title"))
+                    .font(.title3.weight(.semibold))
+                Text(localization.text("xkeen.geoAutoUpdate.message"))
+                    .foregroundStyle(.secondary)
+            }
+
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text(localization.text("xkeen.geoAutoUpdate.day"))
+                        .foregroundStyle(.secondary)
+                    Picker(localization.text("xkeen.geoAutoUpdate.day"), selection: $selectedDay) {
+                        ForEach(days, id: \.self) { day in
+                            Text(localization.text("xkeen.geoAutoUpdate.day.\(day.rawValue)"))
+                                .tag(day.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+
+                GridRow {
+                    Text(localization.text("xkeen.geoAutoUpdate.time"))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Stepper(value: $hour, in: 0...23) {
+                            Text(localization.text("xkeen.geoAutoUpdate.hour", args: [hour]))
+                                .frame(width: 90, alignment: .leading)
+                        }
+                        Stepper(value: $minute, in: 0...59) {
+                            Text(localization.text("xkeen.geoAutoUpdate.minute", args: [minute]))
+                                .frame(width: 110, alignment: .leading)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button(localization.text("action.cancel")) {
+                    cancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(localization.text("xkeen.geoAutoUpdate.apply")) {
+                    apply()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 480)
+    }
+}
+
+private enum GeoAutoUpdateDay: Int, CaseIterable, Identifiable {
+    case monday = 1
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+    case daily = 8
+
+    var id: Int { rawValue }
+}
+
+// MARK: - Default values
+
+private let defaultGeoAutoUpdateDay = GeoAutoUpdateDay.daily.rawValue
+private let defaultGeoAutoUpdateHour = 4
+private let defaultGeoAutoUpdateMinute = 30
+
+// MARK: - XkeenControlView helpers
+
+private extension XkeenControlView {
+    var configureGeoAutoUpdateInput: String {
+        "\(Self.configureGeoAutoUpdateMenuChoice)\n\(geoAutoUpdateDay)\n\(geoAutoUpdateHour)\n\(geoAutoUpdateMinute)\n"
+    }
+
+    /// First menu choice in xkeen's interactive prompt to enable/configure geo auto-update.
+    private static let configureGeoAutoUpdateMenuChoice = 1
 }

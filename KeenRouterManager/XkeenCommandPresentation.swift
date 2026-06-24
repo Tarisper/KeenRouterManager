@@ -17,6 +17,10 @@ extension XkeenCommand {
             return "bolt.horizontal"
         case .updateXkeen:
             return "shippingbox"
+        case .configureGeoAutoUpdate:
+            return "calendar.badge.clock"
+        case .disableGeoAutoUpdate:
+            return "calendar.badge.minus"
         case .backupXkeen, .backupConfig:
             return "externaldrive"
         case .restoreXkeen, .restoreConfig:

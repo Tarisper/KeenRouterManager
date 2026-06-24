@@ -526,6 +526,14 @@ private final class GzipArchiveWriter: @unchecked Sendable {
 
 private extension String {
     nonisolated func removingTerminalControlSequences() -> String {
+        let cleaned = removingANSITerminalSequences(replacingCarriageReturnsWithNewlines: true)
+        return cleaned
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !String($0).isDownloadProgressLine }
+            .joined(separator: "\n")
+    }
+
+    private nonisolated func removingANSITerminalSequences(replacingCarriageReturnsWithNewlines: Bool) -> String {
         var result = String.UnicodeScalarView()
         var state = ParserState.normal
 
@@ -535,7 +543,9 @@ private extension String {
                 if scalar.value == 0x1B {
                     state = .escape
                 } else if scalar.value == 0x0D {
-                    continue
+                    if replacingCarriageReturnsWithNewlines {
+                        result.append("\n")
+                    }
                 } else if scalar.value < 0x20, scalar != "\n", scalar != "\t" {
                     continue
                 } else {
@@ -555,6 +565,29 @@ private extension String {
         }
 
         return String(result)
+    }
+
+    private nonisolated var isDownloadProgressLine: Bool {
+        let trimmed = trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+
+        var hasProgressCharacter = false
+        var hasPercent = false
+
+        for scalar in trimmed.unicodeScalars {
+            switch scalar {
+            case "#", "=", "-", "O":
+                hasProgressCharacter = true
+            case "%":
+                hasPercent = true
+            case "0"..."9", ".", " ":
+                continue
+            default:
+                return false
+            }
+        }
+
+        return hasProgressCharacter || hasPercent
     }
 
     private enum ParserState {

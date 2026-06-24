@@ -51,6 +51,7 @@
 - Configuration import/export in JSON format.
 - Settings window with interface language selection and Xkeen SSH defaults.
 - Xkeen management over SSH using the selected router profile credentials.
+- Geo auto-update configuration: set day of week and time for automatic Geo database updates via a native macOS date/time picker.
 - Live command output for long-running Xkeen operations.
 - Xkeen backup listing, download, restore, and cleanup helpers.
 - Xray config replacement for known JSON config files.
@@ -71,6 +72,7 @@ Supported Xkeen actions:
 
 - status, start, stop, and restart;
 - update Geo databases (`xkeen -ug`);
+- configure and disable Geo auto-update (`xkeen -ugc` / `-dgc`) with a day-of-week and time picker;
 - update Xray (`xkeen -ux`) with a version picker based on Xkeen's release list;
 - update Xkeen (`xkeen -uk`);
 - create and restore Xkeen/config backups;
@@ -106,6 +108,18 @@ Prebuilt application bundles are available in GitHub Releases.
 1. Open the Releases page of this repository.
 2. Download either `KeenRouterManager.dmg` or `KeenRouterManager.app.zip` from the latest release.
 3. Open the downloaded file and move `KeenRouterManager.app` to `Applications`.
+
+GitHub builds are not notarized. If macOS blocks the downloaded app, allow this app explicitly:
+
+```bash
+APP="/Applications/KeenRouterManager.app"
+
+sudo xattr -dr com.apple.quarantine "$APP"
+sudo spctl --add --label "KeenRouterManager" "$APP"
+sudo spctl --enable --label "KeenRouterManager"
+```
+
+If you download a new build, repeat the `xattr` command for the new `.app` bundle.
 
 ## Requirements for Building from Source
 

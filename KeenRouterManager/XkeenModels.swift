@@ -8,6 +8,8 @@ enum XkeenCommand: String, CaseIterable, Identifiable, Sendable {
     case updateGeo
     case updateXray
     case updateXkeen
+    case configureGeoAutoUpdate
+    case disableGeoAutoUpdate
     case backupXkeen
     case backupConfig
     case restoreXkeen
@@ -34,6 +36,10 @@ enum XkeenCommand: String, CaseIterable, Identifiable, Sendable {
             return "-ux"
         case .updateXkeen:
             return "-uk"
+        case .configureGeoAutoUpdate:
+            return "-ugc"
+        case .disableGeoAutoUpdate:
+            return "-dgc"
         case .backupXkeen:
             return "-kb"
         case .backupConfig:
@@ -63,6 +69,10 @@ enum XkeenCommand: String, CaseIterable, Identifiable, Sendable {
             return "xkeen.command.updateXray"
         case .updateXkeen:
             return "xkeen.command.updateXkeen"
+        case .configureGeoAutoUpdate:
+            return "xkeen.command.configureGeoAutoUpdate"
+        case .disableGeoAutoUpdate:
+            return "xkeen.command.disableGeoAutoUpdate"
         case .backupXkeen:
             return "xkeen.command.backupXkeen"
         case .backupConfig:
