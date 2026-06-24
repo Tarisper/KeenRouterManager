@@ -8,7 +8,7 @@ env:
 
 jobs:
   build-signed:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
