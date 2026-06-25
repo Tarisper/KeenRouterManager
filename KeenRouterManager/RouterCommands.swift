@@ -7,6 +7,8 @@ import SwiftUI
  * inspector-specific commands because client details are shown as a sheet.
  */
 struct RouterCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
     @ObservedObject var appState: AppUIState
     @ObservedObject var viewModel: MainViewModel
     @ObservedObject var localization: LocalizationManager
@@ -21,7 +23,7 @@ struct RouterCommands: Commands {
 
         CommandGroup(replacing: .appInfo) {
             Button(localization.text("menu.aboutApp", args: [appName])) {
-                AppSceneActionBridge.shared.openAbout?()
+                openWindow(id: "about")
             }
         }
 

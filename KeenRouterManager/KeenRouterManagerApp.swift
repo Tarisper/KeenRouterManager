@@ -2,33 +2,6 @@ import AppKit
 import SwiftUI
 
 /**
- * Shared bridge for opening auxiliary windows from menu commands.
- */
-@MainActor
-final class AppSceneActionBridge {
-    static let shared = AppSceneActionBridge()
-
-    var openAbout: (() -> Void)?
-}
-
-/**
- * Invisible helper view that captures SwiftUI window-opening actions and
- * exposes them to menu commands.
- */
-struct AppSceneActionCaptureView: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
-            .onAppear {
-                AppSceneActionBridge.shared.openAbout = { openWindow(id: "about") }
-            }
-    }
-}
-
-/**
  * Entry point for KeenRouterManager.
  *
  * The app uses native SwiftUI scenes for the main router browser, settings,
@@ -53,7 +26,6 @@ struct KeenRouterManagerApp: App {
                 .environmentObject(localization)
                 .environmentObject(viewModel)
                 .environmentObject(appUI)
-                .background(AppSceneActionCaptureView())
         }
         .defaultSize(width: 1240, height: 820)
         .commands {

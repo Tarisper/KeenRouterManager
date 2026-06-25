@@ -105,16 +105,58 @@ struct RouterPolicy: Identifiable, Hashable {
  */
 struct RouterEditorPayload: Identifiable {
     let id = UUID()
-    let profileID: UUID?
-    var name: String
-    var address: String
-    var username: String
+    var profile: RouterProfile
     var password: String
+    let isNew: Bool
 
     /**
-     * Indicates whether the payload is for a new profile.
+     * Creates editor state from a saved or draft profile.
+     * - Parameters:
+     *   - profile: Router profile values shown in the form.
+     *   - password: Router password stored separately from the profile.
+     *   - isNew: Whether saving should create a new profile entry.
      */
-    var isNew: Bool {
-        profileID == nil
+    init(profile: RouterProfile, password: String, isNew: Bool = false) {
+        self.profile = profile
+        self.password = password
+        self.isNew = isNew
+    }
+
+    /**
+     * Compatibility initializer for form call sites that work with flat fields.
+     */
+    init(profileID: UUID?, name: String, address: String, username: String, password: String) {
+        self.init(
+            profile: RouterProfile(
+                id: profileID ?? UUID(),
+                name: name,
+                address: address,
+                username: username
+            ),
+            password: password,
+            isNew: profileID == nil
+        )
+    }
+
+    /**
+     * Saved profile identifier, or `nil` for a new draft.
+     */
+    var profileID: UUID? {
+        isNew ? nil : profile.id
+    }
+
+    var name: String {
+        get { profile.name }
+        set { profile.name = newValue }
+    }
+
+    var address: String {
+        get { profile.address }
+        set { profile.address = newValue }
+    }
+
+    var username: String {
+        get { profile.username }
+        set { profile.username = newValue }
     }
 }

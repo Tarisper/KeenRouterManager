@@ -25,8 +25,12 @@ struct AppSettings: Codable {
         case favoriteClientMACs
         case isRouterListVisible
         case interfaceLanguageCode
+        case allowsSelfSignedRouterCertificates
         case xkeenSSHPort
         case xkeenPath
+        case geoAutoUpdateDay
+        case geoAutoUpdateHour
+        case geoAutoUpdateMinute
     }
 
     /**
@@ -52,14 +56,34 @@ struct AppSettings: Codable {
     var interfaceLanguageCode: String? = nil
 
     /**
+     * Whether HTTPS router connections may accept local/self-signed certificates.
+     */
+    var allowsSelfSignedRouterCertificates: Bool = AppDefaults.allowsSelfSignedRouterCertificates
+
+    /**
      * SSH port used for Xkeen management.
      */
-    var xkeenSSHPort: String = "222"
+    var xkeenSSHPort: Int = AppDefaults.xkeenSSHPort
 
     /**
      * Absolute path to the Xkeen executable on the router.
      */
-    var xkeenPath: String = "/opt/sbin/xkeen"
+    var xkeenPath: String = AppDefaults.xkeenPath
+
+    /**
+     * Xkeen Geo auto-update weekday (`1...7`) or daily (`8`).
+     */
+    var geoAutoUpdateDay: Int = AppDefaults.geoAutoUpdateDay
+
+    /**
+     * Xkeen Geo auto-update hour (`0...23`).
+     */
+    var geoAutoUpdateHour: Int = AppDefaults.geoAutoUpdateHour
+
+    /**
+     * Xkeen Geo auto-update minute (`0...59`).
+     */
+    var geoAutoUpdateMinute: Int = AppDefaults.geoAutoUpdateMinute
 
     /**
      * Creates settings with explicit values.
@@ -69,15 +93,23 @@ struct AppSettings: Codable {
         favoriteClientMACs: Set<String> = [],
         isRouterListVisible: Bool = true,
         interfaceLanguageCode: String? = nil,
-        xkeenSSHPort: String = "222",
-        xkeenPath: String = "/opt/sbin/xkeen"
+        allowsSelfSignedRouterCertificates: Bool = AppDefaults.allowsSelfSignedRouterCertificates,
+        xkeenSSHPort: Int = AppDefaults.xkeenSSHPort,
+        xkeenPath: String = AppDefaults.xkeenPath,
+        geoAutoUpdateDay: Int = AppDefaults.geoAutoUpdateDay,
+        geoAutoUpdateHour: Int = AppDefaults.geoAutoUpdateHour,
+        geoAutoUpdateMinute: Int = AppDefaults.geoAutoUpdateMinute
     ) {
         self.showOnlyMyDevices = showOnlyMyDevices
         self.favoriteClientMACs = Self.normalizedMACs(favoriteClientMACs)
         self.isRouterListVisible = isRouterListVisible
         self.interfaceLanguageCode = interfaceLanguageCode
-        self.xkeenSSHPort = xkeenSSHPort
+        self.allowsSelfSignedRouterCertificates = allowsSelfSignedRouterCertificates
+        self.xkeenSSHPort = AppDefaults.normalizedXkeenSSHPort(xkeenSSHPort)
         self.xkeenPath = xkeenPath
+        self.geoAutoUpdateDay = AppDefaults.normalizedGeoAutoUpdateDay(geoAutoUpdateDay)
+        self.geoAutoUpdateHour = AppDefaults.normalizedGeoAutoUpdateHour(geoAutoUpdateHour)
+        self.geoAutoUpdateMinute = AppDefaults.normalizedGeoAutoUpdateMinute(geoAutoUpdateMinute)
     }
 
     /**
@@ -93,12 +125,44 @@ struct AppSettings: Codable {
         )
         self.isRouterListVisible = try container.decodeIfPresent(Bool.self, forKey: .isRouterListVisible) ?? true
         self.interfaceLanguageCode = try container.decodeIfPresent(String.self, forKey: .interfaceLanguageCode)
-        self.xkeenSSHPort = try container.decodeIfPresent(String.self, forKey: .xkeenSSHPort) ?? "222"
-        self.xkeenPath = try container.decodeIfPresent(String.self, forKey: .xkeenPath) ?? "/opt/sbin/xkeen"
+        self.allowsSelfSignedRouterCertificates =
+            try container.decodeIfPresent(Bool.self, forKey: .allowsSelfSignedRouterCertificates) ??
+            AppDefaults.allowsSelfSignedRouterCertificates
+        self.xkeenSSHPort = AppDefaults.normalizedXkeenSSHPort(try Self.decodeSSHPort(from: container))
+        self.xkeenPath = try container.decodeIfPresent(String.self, forKey: .xkeenPath) ?? AppDefaults.xkeenPath
+        self.geoAutoUpdateDay = AppDefaults.normalizedGeoAutoUpdateDay(
+            try container.decodeIfPresent(Int.self, forKey: .geoAutoUpdateDay) ?? AppDefaults.geoAutoUpdateDay
+        )
+        self.geoAutoUpdateHour = AppDefaults.normalizedGeoAutoUpdateHour(
+            try container.decodeIfPresent(Int.self, forKey: .geoAutoUpdateHour) ?? AppDefaults.geoAutoUpdateHour
+        )
+        self.geoAutoUpdateMinute = AppDefaults.normalizedGeoAutoUpdateMinute(
+            try container.decodeIfPresent(Int.self, forKey: .geoAutoUpdateMinute) ?? AppDefaults.geoAutoUpdateMinute
+        )
     }
 
     private static func normalizedMACs(_ macs: Set<String>) -> Set<String> {
         Set(macs.map { $0.lowercased() })
+    }
+
+    private static func decodeSSHPort(from container: KeyedDecodingContainer<CodingKeys>) throws -> Int {
+        guard container.contains(.xkeenSSHPort), try !container.decodeNil(forKey: .xkeenSSHPort) else {
+            return AppDefaults.xkeenSSHPort
+        }
+        if let port = try? container.decode(Int.self, forKey: .xkeenSSHPort) {
+            return port
+        }
+        if let rawPort = try? container.decode(String.self, forKey: .xkeenSSHPort),
+           let port = Int(rawPort.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return port
+        }
+        throw DecodingError.typeMismatch(
+            Int.self,
+            DecodingError.Context(
+                codingPath: container.codingPath + [CodingKeys.xkeenSSHPort],
+                debugDescription: "Expected an integer SSH port or a numeric string."
+            )
+        )
     }
 }
 

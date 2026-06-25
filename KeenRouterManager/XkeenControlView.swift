@@ -1,5 +1,27 @@
 import SwiftUI
 
+private struct XkeenCommandExecutionState {
+    var isRunning = false
+    var selectedCommand: XkeenCommand?
+    var result: XkeenCommandResult?
+    var liveOutput = ""
+    var errorMessage: String?
+}
+
+private struct XkeenBackupState {
+    var items: [XkeenBackupItem] = []
+    var selectedNames: Set<String> = []
+    var isLoading = false
+}
+
+private struct XkeenSheetState {
+    var isDeleteBackupConfirmationShown = false
+    var isXrayReleaseSelectionPresented = false
+    var isGeoAutoUpdateConfigurationPresented = false
+    var xrayReleaseChoices: [XrayReleaseChoice] = []
+    var selectedXrayReleaseNumber: Int?
+}
+
 struct XkeenControlView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var localization: LocalizationManager
@@ -10,26 +32,16 @@ struct XkeenControlView: View {
     let deleteBackups: (Set<String>) async throws -> XkeenCommandResult
     let downloadBackups: (Set<String>, URL) async throws -> XkeenCommandResult
     let uploadConfigs: ([URL]) async throws -> XkeenCommandResult
+    @Binding var geoAutoUpdateDay: Int
+    @Binding var geoAutoUpdateHour: Int
+    @Binding var geoAutoUpdateMinute: Int
 
-    @State private var isRunning = false
-    @State private var selectedCommand: XkeenCommand?
-    @State private var result: XkeenCommandResult?
-    @State private var liveOutput = ""
-    @State private var errorMessage: String?
-    @State private var backups: [XkeenBackupItem] = []
-    @State private var selectedBackups: Set<String> = []
-    @State private var isLoadingBackups = false
-    @State private var isDeleteBackupConfirmationShown = false
-    @State private var isXrayReleaseSelectionPresented = false
-    @State private var isGeoAutoUpdateConfigurationPresented = false
-    @State private var xrayReleaseChoices: [XrayReleaseChoice] = []
-    @State private var selectedXrayReleaseNumber: Int?
-    @State private var geoAutoUpdateDay = defaultGeoAutoUpdateDay
-    @State private var geoAutoUpdateHour = defaultGeoAutoUpdateHour
-    @State private var geoAutoUpdateMinute = defaultGeoAutoUpdateMinute
+    @State private var commandState = XkeenCommandExecutionState()
+    @State private var backupState = XkeenBackupState()
+    @State private var sheetState = XkeenSheetState()
 
     private var areActionControlsDisabled: Bool {
-        isRunning || isLoadingBackups
+        commandState.isRunning || backupState.isLoading
     }
 
     var body: some View {
@@ -64,7 +76,7 @@ struct XkeenControlView: View {
                 ])
                 HStack(spacing: 8) {
                     Button {
-                        isGeoAutoUpdateConfigurationPresented = true
+                        sheetState.isGeoAutoUpdateConfigurationPresented = true
                     } label: {
                         Label(
                             localization.text("xkeen.command.configureGeoAutoUpdate"),
@@ -124,39 +136,39 @@ struct XkeenControlView: View {
         }
         .confirmationDialog(
             localization.text("xkeen.backups.deleteConfirm.title"),
-            isPresented: $isDeleteBackupConfirmationShown
+            isPresented: $sheetState.isDeleteBackupConfirmationShown
         ) {
             Button(localization.text("xkeen.backups.deleteConfirm.action"), role: .destructive) {
                 Task { await deleteSelectedBackups() }
             }
             Button(localization.text("action.cancel"), role: .cancel) {}
         } message: {
-            Text(localization.text("xkeen.backups.deleteConfirm.message", args: [selectedBackups.count]))
+            Text(localization.text("xkeen.backups.deleteConfirm.message", args: [backupState.selectedNames.count]))
         }
-        .sheet(isPresented: $isXrayReleaseSelectionPresented) {
+        .sheet(isPresented: $sheetState.isXrayReleaseSelectionPresented) {
             XrayReleaseSelectionView(
-                choices: xrayReleaseChoices,
+                choices: sheetState.xrayReleaseChoices,
                 selectedReleaseNumber: Binding(
-                    get: { selectedXrayReleaseNumber },
-                    set: { selectedXrayReleaseNumber = $0 }
+                    get: { sheetState.selectedXrayReleaseNumber },
+                    set: { sheetState.selectedXrayReleaseNumber = $0 }
                 ),
                 install: { choice in
-                    isXrayReleaseSelectionPresented = false
+                    sheetState.isXrayReleaseSelectionPresented = false
                     run(.updateXray, input: "\(choice.number)\n")
                 }
             )
             .environmentObject(localization)
         }
-        .sheet(isPresented: $isGeoAutoUpdateConfigurationPresented) {
+        .sheet(isPresented: $sheetState.isGeoAutoUpdateConfigurationPresented) {
             XkeenGeoAutoUpdateConfigurationView(
                 selectedDay: $geoAutoUpdateDay,
                 hour: $geoAutoUpdateHour,
                 minute: $geoAutoUpdateMinute,
                 cancel: {
-                    isGeoAutoUpdateConfigurationPresented = false
+                    sheetState.isGeoAutoUpdateConfigurationPresented = false
                 },
                 apply: {
-                    isGeoAutoUpdateConfigurationPresented = false
+                    sheetState.isGeoAutoUpdateConfigurationPresented = false
                     run(
                         .configureGeoAutoUpdate,
                         input: configureGeoAutoUpdateInput
@@ -177,19 +189,19 @@ struct XkeenControlView: View {
     }
 
     private var outputText: String {
-        if let errorMessage {
+        if let errorMessage = commandState.errorMessage {
             return errorMessage
         }
 
-        if isRunning, let selectedCommand {
+        if commandState.isRunning, let selectedCommand = commandState.selectedCommand {
             let header = localization.text(
                 "xkeen.output.running",
                 args: [localization.text(selectedCommand.localizationKey)]
             )
-            return liveOutput.isEmpty ? header : header + "\n\n" + liveOutput
+            return commandState.liveOutput.isEmpty ? header : header + "\n\n" + commandState.liveOutput
         }
 
-        guard let result else {
+        guard let result = commandState.result else {
             return localization.text("xkeen.output.placeholder")
         }
 
@@ -206,8 +218,8 @@ struct XkeenControlView: View {
                 HStack {
                     Text(localization.text("xkeen.backups.path"))
                         .foregroundStyle(.secondary)
-                    Text("/opt/backups")
-                    if isLoadingBackups {
+                    Text(AppDefaults.xkeenBackupPath)
+                    if backupState.isLoading {
                         ProgressView()
                             .controlSize(.small)
                             .help(localization.text("xkeen.backups.loading"))
@@ -229,27 +241,27 @@ struct XkeenControlView: View {
                     }
                     .labelStyle(.iconOnly)
                     .help(localization.text("xkeen.backups.downloadSelected"))
-                    .disabled(areActionControlsDisabled || selectedBackups.isEmpty)
+                    .disabled(areActionControlsDisabled || backupState.selectedNames.isEmpty)
 
                     Button {
-                        isDeleteBackupConfirmationShown = true
+                        sheetState.isDeleteBackupConfirmationShown = true
                     } label: {
                         Label(localization.text("xkeen.backups.deleteSelected"), systemImage: "trash")
                     }
                     .labelStyle(.iconOnly)
                     .help(localization.text("xkeen.backups.deleteSelected"))
-                    .disabled(areActionControlsDisabled || selectedBackups.isEmpty)
+                    .disabled(areActionControlsDisabled || backupState.selectedNames.isEmpty)
                 }
 
-                if backups.isEmpty {
-                    Text(isLoadingBackups ? localization.text("xkeen.backups.loading") : localization.text("xkeen.backups.empty"))
+                if backupState.items.isEmpty {
+                    Text(backupState.isLoading ? localization.text("xkeen.backups.loading") : localization.text("xkeen.backups.empty"))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(backups) { backup in
+                            ForEach(backupState.items) { backup in
                                 backupRow(backup)
                             }
                         }
@@ -283,7 +295,7 @@ struct XkeenControlView: View {
         .controlSize(.small)
         .help(localization.text(command.localizationKey))
         .overlay(alignment: .trailing) {
-            if isRunning && selectedCommand == command {
+            if commandState.isRunning && commandState.selectedCommand == command {
                 ProgressView().controlSize(.small)
                     .offset(x: 18)
             }
@@ -316,38 +328,38 @@ struct XkeenControlView: View {
 
     private func backupSelectionBinding(_ name: String) -> Binding<Bool> {
         Binding {
-            selectedBackups.contains(name)
+            backupState.selectedNames.contains(name)
         } set: { isSelected in
             if isSelected {
-                selectedBackups.insert(name)
+                backupState.selectedNames.insert(name)
             } else {
-                selectedBackups.remove(name)
+                backupState.selectedNames.remove(name)
             }
         }
     }
 
     private func downloadSelectedBackups() {
         guard !areActionControlsDisabled else { return }
-        guard !selectedBackups.isEmpty,
+        guard !backupState.selectedNames.isEmpty,
               let destinationURL = XkeenFilePanels.chooseBackupDownloadURL(localization: localization)
         else {
             return
         }
-        isRunning = true
-        errorMessage = nil
-        liveOutput = ""
-        result = nil
-        selectedCommand = .downloadBackups
+        commandState.isRunning = true
+        commandState.errorMessage = nil
+        commandState.liveOutput = ""
+        commandState.result = nil
+        commandState.selectedCommand = .downloadBackups
 
         Task {
             do {
-                result = try await downloadBackups(selectedBackups, destinationURL)
+                commandState.result = try await downloadBackups(backupState.selectedNames, destinationURL)
             } catch {
-                errorMessage = error.localizedDescription
+                commandState.errorMessage = error.localizedDescription
             }
 
-            isRunning = false
-            selectedCommand = nil
+            commandState.isRunning = false
+            commandState.selectedCommand = nil
         }
     }
 
@@ -356,116 +368,116 @@ struct XkeenControlView: View {
         let configURLs = XkeenFilePanels.chooseXrayConfigURLs(localization: localization)
         guard !configURLs.isEmpty else { return }
 
-        selectedCommand = .replaceConfigs
-        isRunning = true
-        errorMessage = nil
-        liveOutput = ""
-        result = nil
+        commandState.selectedCommand = .replaceConfigs
+        commandState.isRunning = true
+        commandState.errorMessage = nil
+        commandState.liveOutput = ""
+        commandState.result = nil
 
         Task {
             do {
-                result = try await uploadConfigs(configURLs)
+                commandState.result = try await uploadConfigs(configURLs)
             } catch {
-                errorMessage = error.localizedDescription
+                commandState.errorMessage = error.localizedDescription
             }
 
-            isRunning = false
-            selectedCommand = nil
+            commandState.isRunning = false
+            commandState.selectedCommand = nil
         }
     }
 
     private func loadXrayReleases() {
         guard !areActionControlsDisabled else { return }
-        selectedCommand = .updateXray
-        isRunning = true
-        errorMessage = nil
-        liveOutput = localization.text("xkeen.updateXray.loading") + "\n"
-        result = nil
+        commandState.selectedCommand = .updateXray
+        commandState.isRunning = true
+        commandState.errorMessage = nil
+        commandState.liveOutput = localization.text("xkeen.updateXray.loading") + "\n"
+        commandState.result = nil
 
         Task {
             do {
                 let releaseListResult = try await runCommand(.updateXray, "0\n", makeLiveOutputHandler())
-                result = releaseListResult
+                commandState.result = releaseListResult
                 let choices = XrayReleaseParser.parseChoices(from: releaseListResult.output)
                 if choices.isEmpty {
-                    errorMessage = localization.text("xkeen.updateXray.noReleases")
+                    commandState.errorMessage = localization.text("xkeen.updateXray.noReleases")
                 } else {
-                    xrayReleaseChoices = choices
-                    selectedXrayReleaseNumber = choices.first?.number
-                    isXrayReleaseSelectionPresented = true
+                    sheetState.xrayReleaseChoices = choices
+                    sheetState.selectedXrayReleaseNumber = choices.first?.number
+                    sheetState.isXrayReleaseSelectionPresented = true
                 }
             } catch {
-                errorMessage = error.localizedDescription
+                commandState.errorMessage = error.localizedDescription
             }
 
-            isRunning = false
-            selectedCommand = nil
+            commandState.isRunning = false
+            commandState.selectedCommand = nil
         }
     }
 
     private func run(_ command: XkeenCommand, input: String? = nil) {
         guard !areActionControlsDisabled else { return }
-        selectedCommand = command
-        isRunning = true
-        errorMessage = nil
-        liveOutput = ""
-        result = nil
+        commandState.selectedCommand = command
+        commandState.isRunning = true
+        commandState.errorMessage = nil
+        commandState.liveOutput = ""
+        commandState.result = nil
 
         Task {
             do {
                 if let backupCommand = command.createsBackupBeforeRun {
                     let backupName = localization.text(backupCommand.localizationKey)
                     await MainActor.run {
-                        liveOutput += localization.text("xkeen.output.backupBeforeUpdate", args: [backupName]) + "\n"
+                        commandState.liveOutput += localization.text("xkeen.output.backupBeforeUpdate", args: [backupName]) + "\n"
                     }
                     _ = try await runCommand(backupCommand, nil, makeLiveOutputHandler())
                 }
-                result = try await runCommand(command, input, makeLiveOutputHandler())
+                commandState.result = try await runCommand(command, input, makeLiveOutputHandler())
                 await refreshBackups()
             } catch {
-                errorMessage = error.localizedDescription
+                commandState.errorMessage = error.localizedDescription
             }
 
-            isRunning = false
-            selectedCommand = nil
+            commandState.isRunning = false
+            commandState.selectedCommand = nil
         }
     }
 
     @MainActor
     private func refreshBackups() async {
-        isLoadingBackups = true
-        defer { isLoadingBackups = false }
+        backupState.isLoading = true
+        defer { backupState.isLoading = false }
 
         do {
-            backups = try await listBackups()
-            selectedBackups = selectedBackups.intersection(Set(backups.map(\.name)))
+            backupState.items = try await listBackups()
+            backupState.selectedNames = backupState.selectedNames.intersection(Set(backupState.items.map(\.name)))
         } catch {
-            errorMessage = error.localizedDescription
+            commandState.errorMessage = error.localizedDescription
         }
     }
 
     @MainActor
     private func deleteSelectedBackups() async {
-        guard !areActionControlsDisabled, !selectedBackups.isEmpty else { return }
-        isRunning = true
-        errorMessage = nil
-        result = nil
+        guard !areActionControlsDisabled, !backupState.selectedNames.isEmpty else { return }
+        commandState.isRunning = true
+        commandState.errorMessage = nil
+        commandState.result = nil
 
         do {
-            result = try await deleteBackups(selectedBackups)
-            selectedBackups.removeAll()
+            commandState.result = try await deleteBackups(backupState.selectedNames)
+            backupState.selectedNames.removeAll()
             await refreshBackups()
         } catch {
-            errorMessage = error.localizedDescription
+            commandState.errorMessage = error.localizedDescription
         }
 
-        isRunning = false
+        commandState.isRunning = false
     }
 
     private func makeLiveOutputHandler() -> @Sendable (String) -> Void {
         { chunk in
             Task { @MainActor in
-                liveOutput += chunk
+                commandState.liveOutput += chunk
             }
         }
     }
@@ -539,25 +551,6 @@ private struct XkeenGeoAutoUpdateConfigurationView: View {
         .frame(width: 480)
     }
 }
-
-private enum GeoAutoUpdateDay: Int, CaseIterable, Identifiable {
-    case monday = 1
-    case tuesday
-    case wednesday
-    case thursday
-    case friday
-    case saturday
-    case sunday
-    case daily = 8
-
-    var id: Int { rawValue }
-}
-
-// MARK: - Default values
-
-private let defaultGeoAutoUpdateDay = GeoAutoUpdateDay.daily.rawValue
-private let defaultGeoAutoUpdateHour = 4
-private let defaultGeoAutoUpdateMinute = 30
 
 // MARK: - XkeenControlView helpers
 

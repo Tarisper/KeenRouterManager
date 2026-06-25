@@ -418,7 +418,10 @@ struct ContentView: View {
                 },
                 uploadConfigs: { fileURLs in
                     try await viewModel.uploadXrayConfigs(fileURLs)
-                }
+                },
+                geoAutoUpdateDay: $viewModel.geoAutoUpdateDay,
+                geoAutoUpdateHour: $viewModel.geoAutoUpdateHour,
+                geoAutoUpdateMinute: $viewModel.geoAutoUpdateMinute
             )
             .environmentObject(localization)
         }

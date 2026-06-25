@@ -9,7 +9,8 @@ import SwiftUI
 struct RouterEditorView: View {
     @EnvironmentObject private var localization: LocalizationManager
 
-    private let profileID: UUID?
+    private let initialProfile: RouterProfile
+    private let isNewProfile: Bool
     private let onCancel: () -> Void
     private let onSave: (RouterEditorPayload) -> Void
     private let onDiagnose: (RouterEditorPayload) async throws -> ConnectionDiagnosticReport
@@ -34,7 +35,8 @@ struct RouterEditorView: View {
         onSave: @escaping (RouterEditorPayload) -> Void,
         onDiagnose: @escaping (RouterEditorPayload) async throws -> ConnectionDiagnosticReport
     ) {
-        self.profileID = payload.profileID
+        self.initialProfile = payload.profile
+        self.isNewProfile = payload.isNew
         self.onCancel = onCancel
         self.onSave = onSave
         self.onDiagnose = onDiagnose
@@ -45,18 +47,22 @@ struct RouterEditorView: View {
     }
 
     private var draftPayload: RouterEditorPayload {
-        RouterEditorPayload(
-            profileID: profileID,
+        let draftProfile = RouterProfile(
+            id: initialProfile.id,
             name: name,
             address: address,
-            username: username,
-            password: password
+            username: username
+        )
+        return RouterEditorPayload(
+            profile: draftProfile,
+            password: password,
+            isNew: isNewProfile
         )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(profileID == nil ? localization.text("editor.createTitle") : localization.text("editor.editTitle"))
+            Text(isNewProfile ? localization.text("editor.createTitle") : localization.text("editor.editTitle"))
                 .font(.title3.weight(.semibold))
 
             Form {
@@ -71,6 +77,11 @@ struct RouterEditorView: View {
             Text(localization.text("editor.examples"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Label(localization.text("editor.tlsWarning"), systemImage: "lock.trianglebadge.exclamationmark")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Button(localization.text("action.diagnose")) {
