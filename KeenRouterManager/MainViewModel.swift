@@ -63,17 +63,53 @@ final class MainViewModel: ObservableObject {
             }
         }
     }
-    @Published var xkeenSSHPort = "222" {
+    @Published var allowsSelfSignedRouterCertificates = AppDefaults.allowsSelfSignedRouterCertificates {
         didSet {
-            guard xkeenSSHPort != oldValue else { return }
+            guard allowsSelfSignedRouterCertificates != oldValue else { return }
             if !isRestoringSettings {
                 persistSettings()
             }
         }
     }
-    @Published var xkeenPath = "/opt/sbin/xkeen" {
+    @Published var xkeenSSHPort = AppDefaults.xkeenSSHPort {
+        didSet {
+            guard xkeenSSHPort != oldValue else { return }
+            xkeenSSHPort = AppDefaults.normalizedXkeenSSHPort(xkeenSSHPort)
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
+    @Published var xkeenPath = AppDefaults.xkeenPath {
         didSet {
             guard xkeenPath != oldValue else { return }
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
+    @Published var geoAutoUpdateDay = AppDefaults.geoAutoUpdateDay {
+        didSet {
+            guard geoAutoUpdateDay != oldValue else { return }
+            geoAutoUpdateDay = AppDefaults.normalizedGeoAutoUpdateDay(geoAutoUpdateDay)
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
+    @Published var geoAutoUpdateHour = AppDefaults.geoAutoUpdateHour {
+        didSet {
+            guard geoAutoUpdateHour != oldValue else { return }
+            geoAutoUpdateHour = AppDefaults.normalizedGeoAutoUpdateHour(geoAutoUpdateHour)
+            if !isRestoringSettings {
+                persistSettings()
+            }
+        }
+    }
+    @Published var geoAutoUpdateMinute = AppDefaults.geoAutoUpdateMinute {
+        didSet {
+            guard geoAutoUpdateMinute != oldValue else { return }
+            geoAutoUpdateMinute = AppDefaults.normalizedGeoAutoUpdateMinute(geoAutoUpdateMinute)
             if !isRestoringSettings {
                 persistSettings()
             }
@@ -94,7 +130,7 @@ final class MainViewModel: ObservableObject {
     private let credentialsStore: CredentialsStore = KeychainCredentialsStore()
     private let settingsStore = FileAppSettingsStore()
     private let localMACAddressProvider = LocalMACAddressProvider()
-    private let xkeenSSHClient = XkeenSSHClient()
+    private let xkeenCommandService = XkeenCommandService()
 
     private var apiClient: KeeneticAPIClient?
     private var connectedProfileID: UUID?
@@ -243,7 +279,11 @@ final class MainViewModel: ObservableObject {
      * Builds an empty payload for creating a new router profile.
      */
     func makeNewEditorPayload() -> RouterEditorPayload {
-        RouterEditorPayload(profileID: nil, name: "", address: "", username: "admin", password: "")
+        RouterEditorPayload(
+            profile: RouterProfile(name: "", address: "", username: "admin"),
+            password: "",
+            isNew: true
+        )
     }
 
     /**
@@ -263,13 +303,7 @@ final class MainViewModel: ObservableObject {
             return nil
         }
 
-        return RouterEditorPayload(
-            profileID: profile.id,
-            name: profile.name,
-            address: profile.address,
-            username: profile.username,
-            password: password
-        )
+        return RouterEditorPayload(profile: profile, password: password)
     }
 
     /**
@@ -296,7 +330,7 @@ final class MainViewModel: ObservableObject {
 
         do {
             let normalizedAddress = try KeeneticAPIClient.normalizedBaseAddress(from: trimmedAddress)
-            let profileID = payload.profileID ?? UUID()
+            let profileID = payload.profile.id
             let profile = RouterProfile(
                 id: profileID,
                 name: trimmedName,
@@ -370,7 +404,8 @@ final class MainViewModel: ObservableObject {
             let client = try KeeneticAPIClient(
                 address: profile.address,
                 username: profile.username,
-                password: credentials.password.trimmingCharacters(in: .newlines)
+                password: credentials.password.trimmingCharacters(in: .newlines),
+                allowsSelfSignedCertificates: allowsSelfSignedRouterCertificates
             )
 
             localMACAddresses = localMACAddressProvider.loadMACAddresses()
@@ -530,7 +565,8 @@ final class MainViewModel: ObservableObject {
         let client = try KeeneticAPIClient(
             address: trimmedAddress,
             username: trimmedUsername,
-            password: sanitizedPassword
+            password: sanitizedPassword,
+            allowsSelfSignedCertificates: allowsSelfSignedRouterCertificates
         )
         return await client.diagnoseConnection()
     }
@@ -661,13 +697,18 @@ final class MainViewModel: ObservableObject {
         }
 
         let host = URLComponents(string: profile.address)?.host ?? profile.address
-        let trimmedPort = xkeenSSHPort.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUsername = profile.username.trimmingCharacters(in: .whitespacesAndNewlines)
         let sanitizedPassword = credentials.password.trimmingCharacters(in: .newlines)
         let trimmedXkeenPath = xkeenPath.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let port = Int(trimmedPort), (1...65535).contains(port) else {
+        guard AppDefaults.isValidXkeenSSHPort(xkeenSSHPort) else {
             throw LocalizedMessageError(message: localization.text("error.ssh.invalidPort"))
+        }
+        guard !trimmedXkeenPath.isEmpty else {
+            throw LocalizedMessageError(message: localization.text("error.ssh.missingXkeenPath"))
+        }
+        guard AppDefaults.isValidXkeenPath(trimmedXkeenPath) else {
+            throw LocalizedMessageError(message: localization.text("error.ssh.invalidXkeenPath"))
         }
         guard !sanitizedPassword.isEmpty else {
             throw LocalizedMessageError(message: localization.text("error.passwordNotFound"))
@@ -675,10 +716,10 @@ final class MainViewModel: ObservableObject {
 
         return XkeenSSHProfile(
             host: host,
-            port: port,
+            port: xkeenSSHPort,
             username: trimmedUsername,
             password: sanitizedPassword,
-            xkeenPath: trimmedXkeenPath.isEmpty ? "/opt/sbin/xkeen" : trimmedXkeenPath
+            xkeenPath: trimmedXkeenPath
         )
     }
 
@@ -691,27 +732,27 @@ final class MainViewModel: ObservableObject {
         onOutput: @escaping @Sendable (String) -> Void = { _ in }
     ) async throws -> XkeenCommandResult {
         let sshProfile = try makeXkeenSSHProfileForSelected()
-        return try await xkeenSSHClient.run(command, profile: sshProfile, input: input, onOutput: onOutput)
+        return try await xkeenCommandService.run(command, profile: sshProfile, input: input, onOutput: onOutput)
     }
 
     func listXkeenBackups() async throws -> [XkeenBackupItem] {
         let sshProfile = try makeXkeenSSHProfileForSelected()
-        return try await xkeenSSHClient.listBackups(profile: sshProfile)
+        return try await xkeenCommandService.listBackups(profile: sshProfile)
     }
 
     func deleteXkeenBackups(_ names: Set<String>) async throws -> XkeenCommandResult {
         let sshProfile = try makeXkeenSSHProfileForSelected()
-        return try await xkeenSSHClient.deleteBackups(names, profile: sshProfile)
+        return try await xkeenCommandService.deleteBackups(names, profile: sshProfile)
     }
 
     func downloadXkeenBackups(_ names: Set<String>, to destinationURL: URL) async throws -> XkeenCommandResult {
         let sshProfile = try makeXkeenSSHProfileForSelected()
-        return try await xkeenSSHClient.downloadBackups(names, to: destinationURL, profile: sshProfile)
+        return try await xkeenCommandService.downloadBackups(names, to: destinationURL, profile: sshProfile)
     }
 
     func uploadXrayConfigs(_ fileURLs: [URL]) async throws -> XkeenCommandResult {
         let sshProfile = try makeXkeenSSHProfileForSelected()
-        return try await xkeenSSHClient.uploadXrayConfigs(fileURLs, profile: sshProfile)
+        return try await xkeenCommandService.uploadXrayConfigs(fileURLs, profile: sshProfile)
     }
 
     private func applyImportedConfiguration(_ archive: RouterConfigurationArchive) throws {
@@ -777,9 +818,21 @@ final class MainViewModel: ObservableObject {
             favoriteClientMACs: favoriteClientMACs,
             isRouterListVisible: isRouterListVisible,
             interfaceLanguageCode: localization.language.rawValue,
+            allowsSelfSignedRouterCertificates: allowsSelfSignedRouterCertificates,
             xkeenSSHPort: xkeenSSHPort,
-            xkeenPath: xkeenPath
+            xkeenPath: xkeenPath,
+            geoAutoUpdateDay: geoAutoUpdateDay,
+            geoAutoUpdateHour: geoAutoUpdateHour,
+            geoAutoUpdateMinute: geoAutoUpdateMinute
         )
+    }
+
+    func normalizeXkeenPath() {
+        xkeenPath = AppDefaults.normalizedXkeenPath(xkeenPath)
+    }
+
+    var isXkeenPathValid: Bool {
+        AppDefaults.isValidXkeenPath(xkeenPath)
     }
 
     private func apply(settings: AppSettings) {
@@ -789,8 +842,12 @@ final class MainViewModel: ObservableObject {
         showOnlyMyDevices = settings.showOnlyMyDevices
         favoriteClientMACs = settings.favoriteClientMACs
         isRouterListVisible = settings.isRouterListVisible
+        allowsSelfSignedRouterCertificates = settings.allowsSelfSignedRouterCertificates
         xkeenSSHPort = settings.xkeenSSHPort
         xkeenPath = settings.xkeenPath
+        geoAutoUpdateDay = settings.geoAutoUpdateDay
+        geoAutoUpdateHour = settings.geoAutoUpdateHour
+        geoAutoUpdateMinute = settings.geoAutoUpdateMinute
     }
 
     private func disconnect(withStatus status: StatusState) {
@@ -855,11 +912,7 @@ final class MainViewModel: ObservableObject {
     private func persistSettings() {
         do {
             try settingsStore.update { settings in
-                settings.showOnlyMyDevices = showOnlyMyDevices
-                settings.favoriteClientMACs = favoriteClientMACs
-                settings.isRouterListVisible = isRouterListVisible
-                settings.xkeenSSHPort = xkeenSSHPort
-                settings.xkeenPath = xkeenPath
+                settings = currentSettingsSnapshot()
             }
         } catch {
             present(error: error)
@@ -907,6 +960,7 @@ final class MainViewModel: ObservableObject {
 
         return cleaned.isEmpty ? nil : cleaned
     }
+
 }
 
 private struct LocalizedMessageError: LocalizedError {

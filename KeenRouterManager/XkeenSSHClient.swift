@@ -37,8 +37,9 @@ final class XkeenSSHClient: @unchecked Sendable {
 
     func listBackups(profile: XkeenSSHProfile) async throws -> [XkeenBackupItem] {
         try await Task.detached(priority: .userInitiated) {
+            let backupPath = self.shellQuoted(AppDefaults.xkeenBackupPath)
             let command = """
-            if [ -d /opt/backups ]; then for item in /opt/backups/*; do [ -e "$item" ] || continue; name=${item##*/}; if [ -d "$item" ]; then kind=directory; else kind=file; fi; size=$(du -sk "$item" 2>/dev/null | awk '{print $1}'); modified=$(date -r "$item" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf '%s\\t%s\\t%s\\t%s\\n' "$name" "$kind" "$size" "$modified"; done; fi
+            backup_dir=\(backupPath); if [ -d "$backup_dir" ]; then for item in "$backup_dir"/*; do [ -e "$item" ] || continue; name=${item##*/}; if [ -d "$item" ]; then kind=directory; else kind=file; fi; size=$(du -sk "$item" 2>/dev/null | awk '{print $1}'); modified=$(date -r "$item" '+%Y-%m-%d %H:%M' 2>/dev/null || echo ''); printf '%s\\t%s\\t%s\\t%s\\n' "$name" "$kind" "$size" "$modified"; done; fi
             """
             let result = try self.runShellCommand(command, profile: profile)
             return result.output
@@ -64,7 +65,7 @@ final class XkeenSSHClient: @unchecked Sendable {
                 }
                 return self.shellQuoted(name)
             }
-            let command = "cd /opt/backups && rm -rf -- \(safeNames.joined(separator: " "))"
+            let command = "cd \(self.shellQuoted(AppDefaults.xkeenBackupPath)) && rm -rf -- \(safeNames.joined(separator: " "))"
             let result = try self.runShellCommand(command, profile: profile)
             return XkeenCommandResult(command: .deleteBackups, exitCode: result.exitCode, output: result.output)
         }.value
@@ -78,7 +79,7 @@ final class XkeenSSHClient: @unchecked Sendable {
                 }
                 return self.shellQuoted(name)
             }
-            let command = "cd /opt/backups && tar -czf - -- \(safeNames.joined(separator: " "))"
+            let command = "cd \(self.shellQuoted(AppDefaults.xkeenBackupPath)) && tar -czf - -- \(safeNames.joined(separator: " "))"
             let result = try self.runBinaryDownload(shellCommand: command, profile: profile, destinationURL: destinationURL)
             return XkeenCommandResult(command: .downloadBackups, exitCode: result.exitCode, output: result.output)
         }.value

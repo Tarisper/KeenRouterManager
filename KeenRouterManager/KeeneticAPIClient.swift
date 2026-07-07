@@ -47,6 +47,7 @@ final class KeeneticAPIClient {
     private let preferredScheme: String
     private let hasExplicitScheme: Bool
     private let requestedAddress: String
+    private let allowsSelfSignedCertificates: Bool
 
     private var baseAddress: String
     private var session: URLSession
@@ -65,7 +66,12 @@ final class KeeneticAPIClient {
      *   - password: Login password.
      * - Throws: `RouterAPIError.invalidAddress` when the address is invalid.
      */
-    init(address: String, username: String, password: String) throws {
+    init(
+        address: String,
+        username: String,
+        password: String,
+        allowsSelfSignedCertificates: Bool = AppDefaults.allowsSelfSignedRouterCertificates
+    ) throws {
         let rawAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedOriginal = rawAddress.lowercased()
         self.hasExplicitScheme = trimmedOriginal.hasPrefix("http://") || trimmedOriginal.hasPrefix("https://")
@@ -81,6 +87,7 @@ final class KeeneticAPIClient {
 
         self.username = username
         self.password = password
+        self.allowsSelfSignedCertificates = allowsSelfSignedCertificates
 
         let scheme = (components.scheme ?? "http").lowercased()
         self.preferredScheme = (scheme == "https") ? "https" : "http"
@@ -160,7 +167,11 @@ final class KeeneticAPIClient {
         var firstAuthError: RouterAPIError?
 
         for candidate in candidates {
-            let delegate = InsecureRouterTLSDelegate(username: username, password: password)
+            let delegate = InsecureRouterTLSDelegate(
+                username: username,
+                password: password,
+                allowsSelfSignedCertificates: allowsSelfSignedCertificates
+            )
             let candidateSession = URLSession(
                 configuration: Self.makeSessionConfiguration(),
                 delegate: delegate,
@@ -236,7 +247,11 @@ final class KeeneticAPIClient {
         var lastError: RouterAPIError?
 
         for candidate in baseCandidates() {
-            let delegate = InsecureRouterTLSDelegate(username: username, password: password)
+            let delegate = InsecureRouterTLSDelegate(
+                username: username,
+                password: password,
+                allowsSelfSignedCertificates: allowsSelfSignedCertificates
+            )
             let candidateSession = URLSession(
                 configuration: Self.makeSessionConfiguration(),
                 delegate: delegate,
@@ -941,7 +956,11 @@ final class KeeneticAPIClient {
         let previousCookie = sessionCookie
         sessionCookie = nil
 
-        let delegate = InsecureRouterTLSDelegate(username: username, password: password)
+        let delegate = InsecureRouterTLSDelegate(
+            username: username,
+            password: password,
+            allowsSelfSignedCertificates: allowsSelfSignedCertificates
+        )
         let refreshedSession = URLSession(
             configuration: Self.makeSessionConfiguration(),
             delegate: delegate,
@@ -1120,10 +1139,12 @@ final class KeeneticAPIClient {
 private final class InsecureRouterTLSDelegate: NSObject, URLSessionDelegate {
     private let username: String
     private let password: String
+    private let allowsSelfSignedCertificates: Bool
 
-    init(username: String, password: String) {
+    init(username: String, password: String, allowsSelfSignedCertificates: Bool) {
         self.username = username
         self.password = password
+        self.allowsSelfSignedCertificates = allowsSelfSignedCertificates
     }
 
     /**
@@ -1147,7 +1168,8 @@ private final class InsecureRouterTLSDelegate: NSObject, URLSessionDelegate {
         }
 
         if method == NSURLAuthenticationMethodServerTrust,
-           let trust = challenge.protectionSpace.serverTrust {
+           let trust = challenge.protectionSpace.serverTrust,
+           allowsSelfSignedCertificates {
             completionHandler(.useCredential, URLCredential(trust: trust))
             return
         }

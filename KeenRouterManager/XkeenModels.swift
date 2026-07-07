@@ -1,5 +1,18 @@
 import Foundation
 
+enum GeoAutoUpdateDay: Int, CaseIterable, Identifiable, Sendable {
+    case monday = 1
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+    case sunday
+    case daily = 8
+
+    var id: Int { rawValue }
+}
+
 enum XkeenCommand: String, CaseIterable, Identifiable, Sendable {
     case status
     case start
