@@ -75,7 +75,7 @@ Supported Xkeen actions:
 - configure and disable Geo auto-update (`xkeen -ugc` / `-dgc`) with a day-of-week and time picker;
 - update Xray (`xkeen -ux`) with a version picker based on Xkeen's release list;
 - update Xkeen (`xkeen -uk`);
-- create and restore Xkeen/config backups;
+- create and restore Xkeen backups (`xkeen -kb` / `-kbr`) and Xray config backups (`xkeen -xb` / `-xbr`);
 - list, download, and delete backup items from `/opt/backups`;
 - replace selected Xray JSON config files in `/opt/etc/xray/configs/`.
 

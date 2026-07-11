@@ -56,11 +56,11 @@ enum XkeenCommand: String, CaseIterable, Identifiable, Sendable {
         case .backupXkeen:
             return "-kb"
         case .backupConfig:
-            return "-cb"
+            return "-xb"
         case .restoreXkeen:
             return "-kbr"
         case .restoreConfig:
-            return "-cbr"
+            return "-xbr"
         case .deleteBackups, .downloadBackups, .replaceConfigs:
             return ""
         }
