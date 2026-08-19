@@ -18,8 +18,13 @@ build/
 *.xcarchive
 dist/
 
+# Local Xray/Xkeen backup working area (real router configs, never commit)
+backups/
+
 # Editor settings
 .vscode/
+.kilo/
+.kilocodeignore
 
 # macOS
 .DS_Store
