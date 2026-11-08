@@ -77,7 +77,7 @@ Supported Xkeen actions:
 - update Xkeen (`xkeen -uk`);
 - create and restore Xkeen backups (`xkeen -kb` / `-kbr`) and Xray config backups (`xkeen -xb` / `-xbr`);
 - list, download, and delete backup items from `/opt/backups`;
-- replace selected Xray JSON config files in `/opt/etc/xray/configs/`.
+- replace selected Xray JSON config files in `/opt/etc/xray/configs/` as one validated operation.
 
 For safety, the app does not expose arbitrary SSH command execution. Xray config replacement accepts only JSON files with these exact names:
 
@@ -87,6 +87,8 @@ For safety, the app does not expose arbitrary SSH command execution. Xray config
 - `04_outbounds.json`
 - `05_routing.json`
 - `06_policy.json`
+
+Every selected file must contain a JSON object. The set is uploaded over one SSH connection, existing files are backed up to `/opt/backups`, and the previous set is restored if applying a file fails. Xkeen update is cancelled when its preliminary backup fails.
 
 Selected backups are downloaded as a local `.tar.gz` archive. Command output is streamed while a command runs and terminal control sequences are stripped before display.
 
@@ -179,7 +181,7 @@ Xkeen SSH uses the same Keychain password as the selected router profile; no sep
 
 ## Notes and Limitations
 
-- Some routers/firmware versions do not accept HTTPS over IP (TLS/SNI limitation), so the app uses scheme/port fallback.
+- Some routers/firmware versions do not accept HTTPS over IP (TLS/SNI limitation). Port fallback remains available, but HTTPS never silently downgrades to HTTP; enter `http://` explicitly for an HTTP-only router.
 - macOS network diagnostics may print verbose log lines (`boringssl`, `nw_endpoint_flow_*`) during failed fallback attempts.
 - Xkeen management requires SSH access to the router and an installed Xkeen environment. The app assumes Entware-style paths such as `/opt/bin/sh` and `/opt/sbin/xkeen`.
 - Xray update selection depends on the text output produced by Xkeen. If Xkeen changes its prompt format, the version picker may need to be updated.

@@ -145,7 +145,9 @@ enum XkeenSSHError: LocalizedError, Sendable {
     case invalidBackupName(String)
     case downloadFailed(String)
     case invalidConfigFileName(String)
+    case invalidConfigContents(String)
     case uploadFailed(String)
+    case backupFailed(Int32)
     case interactiveInputRequired
 
     var errorDescription: String? {
@@ -166,8 +168,12 @@ enum XkeenSSHError: LocalizedError, Sendable {
             return LocalizationManager.shared.text("error.ssh.downloadFailed", args: [message])
         case let .invalidConfigFileName(name):
             return LocalizationManager.shared.text("error.ssh.invalidConfigFileName", args: [name])
+        case let .invalidConfigContents(name):
+            return LocalizationManager.shared.text("error.ssh.invalidConfigContents", args: [name])
         case let .uploadFailed(message):
             return LocalizationManager.shared.text("error.ssh.uploadFailed", args: [message])
+        case let .backupFailed(exitCode):
+            return LocalizationManager.shared.text("error.ssh.backupFailed", args: [exitCode])
         case .interactiveInputRequired:
             return LocalizationManager.shared.text("error.ssh.interactiveInputRequired")
         }

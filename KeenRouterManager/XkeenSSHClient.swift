@@ -88,16 +88,11 @@ final class XkeenSSHClient: @unchecked Sendable {
     func uploadXrayConfigs(_ fileURLs: [URL], profile: XkeenSSHProfile) async throws -> XkeenCommandResult {
         try await Task.detached(priority: .userInitiated) {
             let validatedFileURLs = try self.validatedConfigFileURLs(fileURLs)
-            var uploadedFilenames: [String] = []
-
-            for fileURL in validatedFileURLs {
-                let filename = fileURL.lastPathComponent
-                let command = self.makeConfigUploadCommand(filename: filename)
-                _ = try self.runBinaryUpload(shellCommand: command, inputURL: fileURL, profile: profile)
-                uploadedFilenames.append(filename)
-            }
-
-            return XkeenCommandResult(command: .replaceConfigs, exitCode: 0, output: uploadedFilenames.joined(separator: "\n"))
+            let filenames = validatedFileURLs.map(\.lastPathComponent)
+            let archive = try self.makeConfigArchive(from: validatedFileURLs)
+            let command = self.makeConfigUploadCommand(filenames: filenames)
+            let result = try self.runBinaryUpload(shellCommand: command, input: archive, profile: profile)
+            return XkeenCommandResult(command: .replaceConfigs, exitCode: result.exitCode, output: result.output)
         }.value
     }
 
@@ -254,7 +249,7 @@ final class XkeenSSHClient: @unchecked Sendable {
 
     private nonisolated func runBinaryUpload(
         shellCommand: String,
-        inputURL: URL,
+        input: Data,
         profile: XkeenSSHProfile
     ) throws -> (exitCode: Int32, output: String) {
         let connection = try validatedConnection(profile)
@@ -263,19 +258,15 @@ final class XkeenSSHClient: @unchecked Sendable {
             try? FileManager.default.removeItem(at: askPassURL)
         }
 
-        let inputHandle = try FileHandle(forReadingFrom: inputURL)
-        defer {
-            try? inputHandle.close()
-        }
-
         let process = makeSSHProcess(
             connection: connection,
             shellCommand: shellCommand,
             askPassURL: askPassURL
         )
 
+        let inputPipe = Pipe()
         let pipe = Pipe()
-        process.standardInput = inputHandle
+        process.standardInput = inputPipe
         process.standardOutput = pipe
         process.standardError = pipe
         let output = LockedStringBuffer()
@@ -293,6 +284,16 @@ final class XkeenSSHClient: @unchecked Sendable {
         } catch {
             pipe.fileHandleForReading.readabilityHandler = nil
             throw XkeenSSHError.launchFailed(error.localizedDescription)
+        }
+
+        do {
+            try inputPipe.fileHandleForWriting.write(contentsOf: input)
+            try inputPipe.fileHandleForWriting.close()
+        } catch {
+            try? inputPipe.fileHandleForWriting.close()
+            process.waitUntilExit()
+            pipe.fileHandleForReading.readabilityHandler = nil
+            throw XkeenSSHError.uploadFailed(error.localizedDescription)
         }
 
         process.waitUntilExit()
@@ -328,25 +329,82 @@ final class XkeenSSHClient: @unchecked Sendable {
             guard seenFilenames.insert(filename).inserted else {
                 throw XkeenSSHError.invalidConfigFileName(filename)
             }
+            guard
+                let data = try? Data(contentsOf: fileURL),
+                let object = try? JSONSerialization.jsonObject(with: data),
+                object is [String: Any]
+            else {
+                throw XkeenSSHError.invalidConfigContents(filename)
+            }
         }
 
         return fileURLs
     }
 
-    private nonisolated func makeConfigUploadCommand(filename: String) -> String {
-        let target = shellQuoted(filename)
-        let temporaryFilename = shellQuoted(".\(filename).upload-\(UUID().uuidString)")
-        return "cd /opt/etc/xray/configs || exit 1; target=\(target); tmp=\(temporaryFilename); rm -f \"$tmp\"; mode=$(stat -c %a \"$target\" 2>/dev/null || echo 644); if cat > \"$tmp\" && chmod \"$mode\" \"$tmp\" && mv -f \"$tmp\" \"$target\"; then exit 0; else status=$?; rm -f \"$tmp\"; exit \"$status\"; fi"
+    private nonisolated func makeConfigArchive(from fileURLs: [URL]) throws -> Data {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["-czf", "-"] + fileURLs.flatMap { fileURL in
+            ["-C", fileURL.deletingLastPathComponent().path, fileURL.lastPathComponent]
+        }
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+        } catch {
+            throw XkeenSSHError.uploadFailed(error.localizedDescription)
+        }
+
+        let archive = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let message = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let message, !message.isEmpty {
+                throw XkeenSSHError.uploadFailed(message)
+            }
+            throw XkeenSSHError.uploadFailed("tar exited with code \(process.terminationStatus)")
+        }
+        return archive
+    }
+
+    private nonisolated func makeConfigUploadCommand(filenames: [String]) -> String {
+        let fileList = filenames.map { shellQuoted($0) }.joined(separator: " ")
+        let operationID = UUID().uuidString
+        let configsDirectory = shellQuoted("/opt/etc/xray/configs")
+        let stagingDirectory = shellQuoted("/opt/etc/xray/configs/.krm-upload-\(operationID)")
+        let backupDirectory = shellQuoted("\(AppDefaults.xkeenBackupPath)/xray-configs-\(operationID)")
+
+        return """
+        configs_dir=\(configsDirectory); staging_dir=\(stagingDirectory); backup_dir=\(backupDirectory); backup_ready=0; completed=0
+        cleanup() { rm -rf "$staging_dir"; }
+        rollback() { for filename in \(fileList); do if [ -f "$backup_dir/$filename" ]; then cp -p "$backup_dir/$filename" "$configs_dir/$filename"; else rm -f "$configs_dir/$filename"; fi; done; }
+        finish() { status=$?; trap - 0; if [ "$backup_ready" -eq 1 ] && [ "$completed" -eq 0 ]; then rollback; fi; cleanup; exit "$status"; }
+        trap finish 0; trap 'exit 1' 1 2 15
+        [ -d "$configs_dir" ] || exit 1
+        mkdir -m 700 "$staging_dir" || exit 1
+        tar -xzf - -C "$staging_dir" || exit 1
+        for filename in \(fileList); do [ -f "$staging_dir/$filename" ] || exit 1; done
+        mkdir -p "$backup_dir" || exit 1
+        for filename in \(fileList); do target="$configs_dir/$filename"; if [ -e "$target" ]; then cp -p "$target" "$backup_dir/$filename" || exit 1; fi; done
+        backup_ready=1
+        for filename in \(fileList); do source="$staging_dir/$filename"; target="$configs_dir/$filename"; mode=$(stat -c %a "$target" 2>/dev/null || echo 644); if ! chmod "$mode" "$source" || ! mv -f "$source" "$target"; then exit 1; fi; done
+        completed=1
+        printf 'Backup: %s\\n' "$backup_dir"
+        for filename in \(fileList); do printf '%s\\n' "$filename"; done
+        """
     }
 
     private nonisolated func isSafeConfigFileName(_ name: String) -> Bool {
         isSafeBackupName(name)
             && URL(fileURLWithPath: name).pathExtension.lowercased() == "json"
             && Constants.allowedXrayConfigFilenames.contains(name)
-    }
-
-    private nonisolated func doubleQuoted(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 
     private nonisolated func validatedConnection(_ profile: XkeenSSHProfile) throws -> SSHConnection {
@@ -371,7 +429,7 @@ final class XkeenSSHClient: @unchecked Sendable {
         shellCommand: String,
         askPassURL: URL
     ) -> Process {
-        let remoteCommand = "exec \(Constants.shellPath) -c \(doubleQuoted(shellCommand))"
+        let remoteCommand = "exec \(Constants.shellPath) -c \(shellQuoted(shellCommand))"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Constants.sshPath)
         process.arguments = [

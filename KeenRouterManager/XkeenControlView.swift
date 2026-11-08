@@ -430,7 +430,11 @@ struct XkeenControlView: View {
                     await MainActor.run {
                         commandState.liveOutput += localization.text("xkeen.output.backupBeforeUpdate", args: [backupName]) + "\n"
                     }
-                    _ = try await runCommand(backupCommand, nil, makeLiveOutputHandler())
+                    let backupResult = try await runCommand(backupCommand, nil, makeLiveOutputHandler())
+                    commandState.result = backupResult
+                    guard backupResult.exitCode == 0 else {
+                        throw XkeenSSHError.backupFailed(backupResult.exitCode)
+                    }
                 }
                 commandState.result = try await runCommand(command, input, makeLiveOutputHandler())
                 await refreshBackups()

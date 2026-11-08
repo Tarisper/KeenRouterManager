@@ -722,42 +722,44 @@ final class KeeneticAPIClient {
         let https = buildBaseAddress(scheme: "https", portOverride: nil)
         let httpNoPort = buildBaseAddressWithoutPort(scheme: "http")
         let httpsNoPort = buildBaseAddressWithoutPort(scheme: "https")
+        let httpsAlternatePort = buildBaseAddress(scheme: "https", portOverride: 8443)
+        let httpAlternatePort = buildBaseAddress(scheme: "http", portOverride: 8080)
+        let isLocal = isLikelyLocalAddress(host)
 
-        // When an explicit port is provided, try that port first with scheme fallback.
-        if port != nil {
-            if isLikelyLocalAddress(host) {
-                if preferredScheme == "https" {
-                    return deduplicated([https, httpNoPort, http, httpsNoPort, buildBaseAddress(scheme: "https", portOverride: 8443)])
-                }
-                return deduplicated([http, httpNoPort, httpsNoPort, https, buildBaseAddress(scheme: "http", portOverride: 8080)])
+        // HTTPS never falls back to plaintext HTTP, including after a TLS failure.
+        if preferredScheme == "https" {
+            if port != nil {
+                return deduplicated([https, httpsNoPort, httpsAlternatePort])
             }
+            return deduplicated([https, httpsAlternatePort])
+        }
 
-            if preferredScheme == "https" {
-                return deduplicated([https, http, httpsNoPort, httpNoPort])
+        // External addresses without an explicit scheme also use HTTPS only.
+        if !hasExplicitScheme && !isLocal {
+            if port != nil {
+                return deduplicated([https, httpsNoPort, httpsAlternatePort])
+            }
+            return deduplicated([https, httpsAlternatePort])
+        }
+
+        if port != nil {
+            if isLocal {
+                return deduplicated([http, httpNoPort, httpsNoPort, https, httpAlternatePort])
             }
             return deduplicated([http, https, httpNoPort, httpsNoPort])
         }
 
-        // For local addresses (IP, .local, single-label host), HTTP is usually the best first try.
-        if isLikelyLocalAddress(host), port == nil {
-            var candidates: [String] = [http]
-            candidates.append(buildBaseAddress(scheme: "https", portOverride: 8443))
-            candidates.append(https)
-            candidates.append(buildBaseAddress(scheme: "http", portOverride: 8080))
-            candidates.append(buildBaseAddress(scheme: "http", portOverride: 81))
-            return deduplicated(candidates)
+        if isLocal {
+            return deduplicated([
+                http,
+                httpsAlternatePort,
+                https,
+                httpAlternatePort,
+                buildBaseAddress(scheme: "http", portOverride: 81)
+            ])
         }
 
-        // If scheme is omitted, prefer HTTPS first for KeenDNS and external domains.
-        if !hasExplicitScheme {
-            return deduplicated([https, http, buildBaseAddress(scheme: "https", portOverride: 8443)])
-        }
-
-        // With an explicit scheme: try user preference first, then fallback.
-        if preferredScheme == "https" {
-            return deduplicated([https, http, buildBaseAddress(scheme: "https", portOverride: 8443)])
-        }
-        return deduplicated([http, https, buildBaseAddress(scheme: "http", portOverride: 8080)])
+        return deduplicated([http, https, httpAlternatePort])
     }
 
     private func buildBaseAddress(scheme: String, portOverride: Int?) -> String {
