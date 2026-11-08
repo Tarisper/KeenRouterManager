@@ -28,6 +28,23 @@ There is no test suite; verify changes with a successful build and manual runs o
 - **Localization:** runtime JSON — `InterfaceStrings.json` with `ru`/`en` sections, loaded by `LocalizationManager`. No `.strings` files.
 - **Client identity:** `RouterClient.id` is the lowercased MAC; clients are merged from two hotspot endpoints by MAC.
 
+## Router SSH Operations
+
+The built-in Keenetic sshd (default port 222) is fragile — operate accordingly:
+
+- **Lockout policy**: 5 failed authentications → 15-minute lockout. Never retry a failing login more than once or twice; stop and fix the cause first.
+- **Session-pool exhaustion**: a single wedged CLI session can make sshd accept authentication but refuse every new session (`exec request failed on channel 0`) until the router is rebooted. Never open interactive/pty sessions (`ssh -tt`, ssh without a remote command, pager-style CLI commands like `dir`); always run one-shot non-interactive commands; never kill a foreground ssh client mid-session — let it finish or close cleanly.
+- Batch related remote operations into a single ssh connection; keep the number of connections per task minimal.
+- Back up any router file in place before editing (`cp file file.bak-YYYYMMDD`).
+- A wedged sshd can only be cleared by a router reboot; rebooting via the HTTP API works (authenticated `GET /rci/system/reboot`). There is no way to restart sshd alone.
+- **Key-based login does not work on this firmware** (KeeneticOS 5.1.8): once `~/.ssh/authorized_keys` exists in the user's home, sshd accepts authentication but refuses to open ANY session for that user (key and password alike), until the file is removed via another account's shell. Do not attempt to install SSH keys; use password login.
+
+## Security (top priority)
+
+- Security outweighs convenience in every decision. When in doubt, don't do it.
+- Avoid storing credentials: never write router passwords, hashes, or keys into files, notes, chat, or the knowledge base. Use the Keychain and in-memory access only; don't keep copies in `/tmp` or scripts.
+- Never open or leave a remotely reachable full-access hole (extra services, port forwards, password-less or key-based root entry points, temporary admin/service accounts) without an explicit, stated reason — and close it the moment the reason expires. Creating a temporary access path and removing it are one task; removal is not optional.
+
 ## Conventions
 
 - New UI strings go into `InterfaceStrings.json` in BOTH `ru` and `en` sections; no hardcoded strings in views.
@@ -45,4 +62,4 @@ There is no test suite; verify changes with a successful build and manual runs o
 - Update `05 — Принятые решения.md` when introducing or changing a durable architectural decision, including its rationale and relevant trade-offs.
 - Small implementation fixes or refactors that do not change the project's meaning, interfaces, operating model, or established decisions do not require a knowledge-base update.
 - Do not copy secrets, credentials, MAC addresses, personal IP addresses, or host-specific identifiers into the knowledge base.
-- The public [GitHub Wiki](https://github.com/Tarisper/KeenRouterManager/wiki) is user-facing documentation (installation, build, router management, data, CI/CD, troubleshooting). Keep it consistent with the knowledge base and README when external behavior changes.
+- The public [GitHub Wiki](https://github.com/Tarisper/KeenRouterManager/wiki) is user-facing documentation (installation, build, router management, data, CI/CD, troubleshooting). Its local working copy lives in `../KeenRouterManager.wiki` (relative to the repository root). Keep it consistent with the knowledge base and README when external behavior changes.
