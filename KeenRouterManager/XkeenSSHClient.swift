@@ -311,6 +311,16 @@ final class XkeenSSHClient: @unchecked Sendable {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
+    private nonisolated func remoteShellQuoted(_ value: String) -> String {
+        // Keenetic's SSH command parser cannot join POSIX single-quoted fragments.
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "$", with: "\\$")
+            .replacingOccurrences(of: "`", with: "\\`")
+        return "\"\(escaped)\""
+    }
+
     private nonisolated func isSafeBackupName(_ name: String) -> Bool {
         !name.isEmpty
             && !name.contains("/")
@@ -429,7 +439,7 @@ final class XkeenSSHClient: @unchecked Sendable {
         shellCommand: String,
         askPassURL: URL
     ) -> Process {
-        let remoteCommand = "exec \(Constants.shellPath) -c \(shellQuoted(shellCommand))"
+        let remoteCommand = "exec \(Constants.shellPath) -c \(remoteShellQuoted(shellCommand))"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Constants.sshPath)
         process.arguments = [
