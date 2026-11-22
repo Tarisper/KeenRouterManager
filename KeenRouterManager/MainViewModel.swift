@@ -134,7 +134,7 @@ final class MainViewModel: ObservableObject {
 
     private var apiClient: KeeneticAPIClient?
     private var connectedProfileID: UUID?
-    private var localMACAddresses: Set<String> = []
+    @Published private var localMACAddresses: Set<String> = []
     private var isRestoringSettings = false
     private var hasLoadedInitialData = false
     private var statusState: StatusState = .selectRouterAndConnect

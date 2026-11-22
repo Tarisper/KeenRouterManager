@@ -1,22 +1,35 @@
 import Foundation
 import Darwin
+import SystemConfiguration
 
 /**
  * Loads MAC addresses from local network interfaces of the current Mac.
  */
 final class LocalMACAddressProvider {
     /**
-     * Reads a set of active local MAC addresses.
+     * Reads current and hardware MAC addresses, including inactive network interfaces.
      * - Returns: Normalized lowercased MAC addresses (`aa:bb:cc:dd:ee:ff`).
      */
     func loadMACAddresses() -> Set<String> {
+        var addresses = Set<String>()
+        let interfaces = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] ?? []
+        for interface in interfaces {
+            let type = SCNetworkInterfaceGetInterfaceType(interface)
+            guard type == kSCNetworkInterfaceTypeEthernet || type == kSCNetworkInterfaceTypeIEEE80211,
+                  let address = SCNetworkInterfaceGetHardwareAddressString(interface) as String?
+            else { continue }
+            let normalized = address.lowercased()
+            guard !normalized.isEmpty, normalized != "00:00:00:00:00:00" else { continue }
+            addresses.insert(normalized)
+        }
+
+        // Keep current link addresses too: private Wi-Fi addresses can differ from hardware addresses.
         var listPointer: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&listPointer) == 0, let first = listPointer else {
-            return []
+            return addresses
         }
         defer { freeifaddrs(listPointer) }
 
-        var addresses = Set<String>()
         var cursor: UnsafeMutablePointer<ifaddrs>? = first
 
         while let current = cursor {
@@ -28,8 +41,7 @@ final class LocalMACAddressProvider {
             }
 
             let flags = Int32(entry.ifa_flags)
-            guard (flags & IFF_UP) != 0,
-                  (flags & IFF_LOOPBACK) == 0,
+            guard (flags & IFF_LOOPBACK) == 0,
                   (flags & IFF_POINTOPOINT) == 0,
                   addressPointer.pointee.sa_family == UInt8(AF_LINK)
             else {
